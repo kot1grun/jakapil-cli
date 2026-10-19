@@ -43,7 +43,10 @@ func NewClient(cmd *cobra.Command) (*v1.ServiceClient, error) {
 	}
 
 	endpoint, err := cmd.Flags().GetString(FlagEndpoint)
-	if err != nil || endpoint == "" {
+	// The flag carries a non-empty default value (DefaultEndpoint), yet it must
+	// only win over the environment when explicitly set by the user. Otherwise
+	// SLT_ENDPOINT would never be honored.
+	if endpoint == "" || !cmd.Flags().Changed(FlagEndpoint) {
 		endpoint = os.Getenv(EnvEndpoint)
 	}
 	if endpoint == "" {
