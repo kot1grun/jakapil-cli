@@ -55,7 +55,9 @@ Example:
 			if err != nil {
 				return err
 			}
-			if res.StatusCode != http.StatusOK && res.StatusCode != http.StatusAccepted {
+			// The rotation is async and commonly returns 202 Accepted or 204 No
+			// Content; treat any 2xx status as success.
+			if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices {
 				return fmt.Errorf("unexpected HTTP status %d while rotating certificates for cluster %q", res.StatusCode, clusterID)
 			}
 
