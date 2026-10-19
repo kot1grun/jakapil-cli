@@ -28,6 +28,7 @@ func NewClusterCommand() *cobra.Command {
 Subcommands:
   list    List all clusters in the current project
   create  Create a new cluster
+  delete  Delete a cluster by its identifier
 
 Flags:
   -i, --id  Get details of a single cluster by its identifier
@@ -55,7 +56,7 @@ Examples:
 	}
 
 	cmd.Flags().StringVarP(&clusterID, "id", "i", "", "cluster ID to get details for")
-	cmd.AddCommand(newListCommand(), newCreateCommand())
+	cmd.AddCommand(newListCommand(), newCreateCommand(), newDeleteCommand())
 
 	return cmd
 }

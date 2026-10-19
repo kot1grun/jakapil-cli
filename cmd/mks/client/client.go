@@ -12,10 +12,10 @@ import (
 )
 
 const (
-	// FlagToken is the persistent flag name that holds the MKS API token.
+	// FlagToken is the persistent flag name that holds the Selectel Keystone API token.
 	FlagToken = "token"
 
-	// FlagEndpoint is the persistent flag name that holds the MKS API endpoint.
+	// FlagEndpoint is the persistent flag name that holds the Selectel Keystone API endpoint.
 	FlagEndpoint = "endpoint"
 
 	// EnvToken is the environment variable used as a fallback for FlagToken.
