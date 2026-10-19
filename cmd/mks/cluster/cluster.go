@@ -26,7 +26,8 @@ func NewClusterCommand() *cobra.Command {
 		Long: `Manage Kubernetes clusters of the Selectel Managed Kubernetes Service.
 
 Subcommands:
-  list  List all clusters in the current project
+  list    List all clusters in the current project
+  create  Create a new cluster
 
 Flags:
   -i, --id  Get details of a single cluster by its identifier
@@ -54,7 +55,7 @@ Examples:
 	}
 
 	cmd.Flags().StringVarP(&clusterID, "id", "i", "", "cluster ID to get details for")
-	cmd.AddCommand(newListCommand())
+	cmd.AddCommand(newListCommand(), newCreateCommand())
 
 	return cmd
 }
