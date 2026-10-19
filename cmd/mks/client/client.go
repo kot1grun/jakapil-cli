@@ -19,16 +19,20 @@ const (
 	FlagEndpoint = "endpoint"
 
 	// EnvToken is the environment variable used as a fallback for FlagToken.
-	EnvToken = "MKS_TOKEN"
+	EnvToken = "SLT_KS_TOKEN"
+
+	// EnvEndpoint is the environment variable used as a fallback for FlagEndpoint.
+	EnvEndpoint = "SLT_ENDPOINT"
 
 	// DefaultEndpoint is used when neither flag nor config provides an endpoint.
 	DefaultEndpoint = "https://ru-1.mks.selcloud.ru/v1"
 )
 
 // NewClient builds a MKS V1 ServiceClient from the given command.
-// The token is taken from the "--token" flag or from the MKS_TOKEN
-// environment variable; the endpoint is taken from the "--endpoint" flag
-// or defaults to DefaultEndpoint.
+// The token is taken from the "--token" flag or from the SLT_KS_TOKEN
+// environment variable; the endpoint is taken from the "--endpoint" flag,
+// otherwise from the SLT_ENDPOINT environment variable, or defaults to
+// DefaultEndpoint.
 func NewClient(cmd *cobra.Command) (*v1.ServiceClient, error) {
 	token, err := cmd.Flags().GetString(FlagToken)
 	if err != nil || token == "" {
@@ -40,6 +44,9 @@ func NewClient(cmd *cobra.Command) (*v1.ServiceClient, error) {
 
 	endpoint, err := cmd.Flags().GetString(FlagEndpoint)
 	if err != nil || endpoint == "" {
+		endpoint = os.Getenv(EnvEndpoint)
+	}
+	if endpoint == "" {
 		endpoint = DefaultEndpoint
 	}
 
