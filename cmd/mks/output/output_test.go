@@ -1,37 +1,75 @@
 package output
 
-import "testing"
+import (
+	"bytes"
+	"strings"
+	"testing"
+
+	"github.com/spf13/cobra"
+)
 
 type sample struct {
-	Name  string            `json:"name" yaml:"name"`
-	Count int               `json:"count" yaml:"count"`
-	Tags  map[string]string `json:"tags" yaml:"tags"`
+	Name  string `json:"name" yaml:"name"`
+	Count int    `json:"count" yaml:"count"`
 }
 
-func TestRender(t *testing.T) {
-	v := sample{Name: "test", Count: 2, Tags: map[string]string{"a": "b"}}
+// runRoot executes a root command with a persistent --output flag and a single
+// leaf command returning outValue via Print(cmd, outValue).
+func runRoot(t *testing.T, args []string, outValue interface{}) (string, error) {
+	t.Helper()
 
-	if _, err := Render("", v); err != nil {
-		t.Fatalf("Render('') returned error: %v", err)
+	root := &cobra.Command{Use: "root"}
+	root.PersistentFlags().String("output", YAML, "output format")
+	root.SetArgs(args)
+
+	leaf := &cobra.Command{
+		Use:   "leaf",
+		Short: "leaf",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return Print(cmd, outValue)
+		},
 	}
+	root.AddCommand(leaf)
 
-	printed, err := Render(JSON, v)
+	var buf bytes.Buffer
+	root.SetOut(&buf)
+
+	err := root.Execute()
+	return buf.String(), err
+}
+
+func TestPrintYAMLDefault(t *testing.T) {
+	out, err := runRoot(t, []string{"leaf"}, sample{Name: "test", Count: 2})
 	if err != nil {
-		t.Fatalf("Render(json) returned error: %v", err)
+		t.Fatalf("execute: %v", err)
 	}
-	if !printed {
-		t.Fatal("Render(json) did not print")
+	if !strings.Contains(out, "name: test") || !strings.Contains(out, "count: 2") {
+		t.Fatalf("yaml output mismatch:\n%s", out)
 	}
+}
 
-	printed, err = Render(YAML, v)
+func TestPrintJSON(t *testing.T) {
+	out, err := runRoot(t, []string{"leaf", "--output", "json"}, sample{Name: "test", Count: 2})
 	if err != nil {
-		t.Fatalf("Render(yaml) returned error: %v", err)
+		t.Fatalf("execute: %v", err)
 	}
-	if !printed {
-		t.Fatal("Render(yaml) did not print")
+	if !strings.Contains(out, `"name": "test"`) || !strings.Contains(out, `"count": 2`) {
+		t.Fatalf("json output mismatch:\n%s", out)
 	}
+}
 
-	if _, err := Render("xml", v); err == nil {
-		t.Fatal("Render(xml) should return an error")
+func TestPrintPlainList(t *testing.T) {
+	out, err := runRoot(t, []string{"leaf", "--output="}, []sample{{Name: "a"}, {Name: "b"}})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if strings.Count(out, "Name:") != 2 {
+		t.Fatalf("plain list should print each element, got:\n%s", out)
+	}
+}
+
+func TestPrintUnknownFormat(t *testing.T) {
+	if _, err := runRoot(t, []string{"leaf", "--output", "xml"}, sample{Name: "test"}); err == nil {
+		t.Fatal("expected error for unknown output format")
 	}
 }

@@ -11,11 +11,12 @@ import (
 	"github.com/spf13/cobra"
 
 	"jakapil-cli/cmd/mks/client"
+	"jakapil-cli/cmd/mks/output"
 )
 
 // NewNodeGroupCommand returns the "nodegroup" subcommand.
-// Without "--id" it lists all nodegroups of a cluster; with "--id" it
-// returns a single nodegroup referenced by its identifier.
+// Without arguments it shows the command help; "list" lists nodegroups of a
+// cluster; with "--cluster-id" and "--id" it returns a single nodegroup.
 func NewNodeGroupCommand() *cobra.Command {
 	var (
 		clusterID string
@@ -24,13 +25,52 @@ func NewNodeGroupCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "nodegroup",
-		Short: "List cluster nodegroups or get a single nodegroup by ID",
-		Long: `List all nodegroups of a Kubernetes cluster, or get details
-of a single nodegroup by its identifier.
+		Short: "Manage cluster nodegroups (list, get)",
+		Long: `Manage nodegroups of a Kubernetes cluster.
+
+Subcommands:
+  list  List nodegroups of a cluster
+
+Flags:
+  -i, --id  Get details of a single nodegroup
 
 Examples:
-  jakapil-cli mks nodegroup --cluster-id <cluster-id>
+  jakapil-cli mks nodegroup list --cluster-id <cluster-id>
   jakapil-cli mks nodegroup --cluster-id <cluster-id> --id <nodegroup-id>`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if clusterID == "" || groupID == "" {
+				return cmd.Help()
+			}
+
+			mksClient, err := client.NewClient(cmd)
+			if err != nil {
+				return err
+			}
+			ctx := context.Background()
+
+			ng, _, err := mksnodegroup.Get(ctx, mksClient, clusterID, groupID)
+			if err != nil {
+				return err
+			}
+			return output.Print(cmd, ng)
+		},
+	}
+
+	cmd.Flags().StringVar(&clusterID, "cluster-id", "", "cluster ID")
+	cmd.Flags().StringVarP(&groupID, "id", "i", "", "nodegroup ID to get details for")
+	cmd.AddCommand(newListCommand())
+
+	return cmd
+}
+
+// newListCommand returns the "nodegroup list" subcommand.
+func newListCommand() *cobra.Command {
+	var clusterID string
+
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List nodegroups of a cluster",
+		Long:  "List all nodegroups of a Kubernetes cluster.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clusterID == "" {
 				return fmt.Errorf("--cluster-id is required")
@@ -42,29 +82,15 @@ Examples:
 			}
 			ctx := context.Background()
 
-			if groupID != "" {
-				ng, _, err := mksnodegroup.Get(ctx, mksClient, clusterID, groupID)
-				if err != nil {
-					return err
-				}
-				fmt.Printf("%+v\n", ng)
-				return nil
-			}
-
 			groups, _, err := mksnodegroup.List(ctx, mksClient, clusterID)
 			if err != nil {
 				return err
 			}
-			for _, ng := range groups {
-				fmt.Printf("%+v\n", ng)
-			}
-
-			return nil
+			return output.Print(cmd, groups)
 		},
 	}
 
 	cmd.Flags().StringVar(&clusterID, "cluster-id", "", "cluster ID")
-	cmd.Flags().StringVarP(&groupID, "id", "i", "", "nodegroup ID to get details for")
 
 	return cmd
 }

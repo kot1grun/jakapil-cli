@@ -6,7 +6,10 @@ package output
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"reflect"
 
+	"github.com/spf13/cobra"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -18,36 +21,59 @@ const (
 	YAML = "yaml"
 )
 
-// Render prints the given value to stdout in the requested format.
-// An empty format prints nothing and returns false, letting the caller
-// fall back to its default representation. Any other format returns an error.
-func Render(format string, v interface{}) (bool, error) {
+// Print renders v to the command output using the value of the persistent
+// --output flag on cmd. Supported formats are "json" and "yaml"; an empty
+// format falls back to printing v (or each element of a slice/array) with %+v.
+func Print(cmd *cobra.Command, v interface{}) error {
+	format, err := cmd.Flags().GetString("output")
+	if err != nil {
+		return err
+	}
+
+	w := cmd.OutOrStdout()
+
 	switch format {
 	case "":
-		return false, nil
+		return printPlain(w, v)
 	case JSON:
-		return true, renderJSON(v)
+		return renderJSON(w, v)
 	case YAML:
-		return true, renderYAML(v)
+		return renderYAML(w, v)
 	default:
-		return false, fmt.Errorf("unsupported output format %q: use %q or %q", format, JSON, YAML)
+		return fmt.Errorf("unsupported output format %q: use %q or %q", format, JSON, YAML)
 	}
 }
 
-func renderJSON(v interface{}) error {
+// printPlain prints a single value with %+v or, for slices/arrays, each element.
+func printPlain(w io.Writer, v interface{}) error {
+	rv := reflect.ValueOf(v)
+	if rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array {
+		for i := 0; i < rv.Len(); i++ {
+			_, err := fmt.Fprintf(w, "%+v\n", rv.Index(i).Interface())
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	_, err := fmt.Fprintf(w, "%+v\n", v)
+	return err
+}
+
+func renderJSON(w io.Writer, v interface{}) error {
 	b, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return err
 	}
-	fmt.Println(string(b))
-	return nil
+	_, err = fmt.Fprintln(w, string(b))
+	return err
 }
 
-func renderYAML(v interface{}) error {
+func renderYAML(w io.Writer, v interface{}) error {
 	b, err := yaml.Marshal(v)
 	if err != nil {
 		return err
 	}
-	fmt.Print(string(b))
-	return nil
+	_, err = w.Write(b)
+	return err
 }
