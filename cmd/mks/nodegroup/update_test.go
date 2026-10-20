@@ -121,3 +121,54 @@ func TestParseLabelKeysAndTaintKeys(t *testing.T) {
 		t.Fatal("parseTaintKeys should reject empty key")
 	}
 }
+
+func TestCanonicalTaintEffect(t *testing.T) {
+	testCases := []struct {
+		in      string
+		want    mksnodegroup.TaintEffect
+		wantErr bool
+	}{
+		{in: "NoSchedule", want: mksnodegroup.NoScheduleEffect},
+		{in: "noschedule", want: mksnodegroup.NoScheduleEffect},
+		{in: "No-Schedule", want: mksnodegroup.NoScheduleEffect},
+		{in: "PreferNoSchedule", want: mksnodegroup.PreferNoScheduleEffect},
+		{in: "prefer-no-schedule", want: mksnodegroup.PreferNoScheduleEffect},
+		{in: "NoExecute", want: mksnodegroup.NoExecuteEffect},
+		{in: "NOEXECUTE", want: mksnodegroup.NoExecuteEffect},
+		{in: "Bogus", wantErr: true},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.in, func(t *testing.T) {
+			got, err := canonicalTaintEffect(tc.in)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got %q", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if mksnodegroup.TaintEffect(got) != tc.want {
+				t.Fatalf("canonicalTaintEffect(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestParseTaints(t *testing.T) {
+	taints, err := parseTaints([]string{"gpu:NoSchedule", "dedicated=gpu:PreferNoSchedule"})
+	if err != nil {
+		t.Fatalf("parseTaints unexpected error: %v", err)
+	}
+	want := []mksnodegroup.Taint{
+		{Key: "gpu", Effect: mksnodegroup.NoScheduleEffect},
+		{Key: "dedicated", Value: "gpu", Effect: mksnodegroup.PreferNoScheduleEffect},
+	}
+	if !reflect.DeepEqual(taints, want) {
+		t.Fatalf("parseTaints() = %v, want %v", taints, want)
+	}
+	if _, err := parseTaints([]string{"gpu:invalid"}); err == nil {
+		t.Fatal("parseTaints should reject invalid effect")
+	}
+}

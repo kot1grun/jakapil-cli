@@ -286,23 +286,31 @@ func parseTaints(flags []string) ([]mksnodegroup.Taint, error) {
 			taint.Key = keyPart
 		}
 
-		effect = strings.ToUpper(strings.TrimSpace(effect))
-		if !isValidTaintEffect(effect) {
-			return nil, fmt.Errorf("invalid taint effect %q: use NoSchedule, PreferNoSchedule or NoExecute", effect)
+		effect = strings.TrimSpace(effect)
+		canonical, err := canonicalTaintEffect(effect)
+		if err != nil {
+			return nil, err
 		}
-		taint.Effect = mksnodegroup.TaintEffect(effect)
+		taint.Effect = mksnodegroup.TaintEffect(canonical)
 
 		taints = append(taints, taint)
 	}
 	return taints, nil
 }
 
-func isValidTaintEffect(v string) bool {
-	switch v {
-	case "NOSCHEDULE", "PREFERNOSCHEDULE", "NOEXECUTE":
-		return true
+// canonicalTaintEffect maps a user-provided effect (accepted in any case and
+// with or without hyphens, e.g. "prefer-no-schedule") to the canonical value
+// the MKS API expects: NoSchedule, PreferNoSchedule or NoExecute.
+func canonicalTaintEffect(effect string) (string, error) {
+	switch {
+	case strings.EqualFold(effect, "NoSchedule") || strings.EqualFold(effect, "No-Schedule"):
+		return "NoSchedule", nil
+	case strings.EqualFold(effect, "NoExecute") || strings.EqualFold(effect, "No-Execute"):
+		return "NoExecute", nil
+	case strings.EqualFold(effect, "PreferNoSchedule") || strings.EqualFold(effect, "Prefer-No-Schedule"):
+		return "PreferNoSchedule", nil
 	default:
-		return false
+		return "", fmt.Errorf("invalid taint effect %q: use NoSchedule, PreferNoSchedule or NoExecute", effect)
 	}
 }
 
