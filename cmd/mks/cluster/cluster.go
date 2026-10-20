@@ -31,6 +31,7 @@ Subcommands:
   delete          Delete a cluster by its identifier
   get-kubeconfig  Get the kubeconfig of a cluster by its identifier
   rotate-certs    Rotate the certificates of a cluster by its identifier
+  task            Manage cluster tasks (list, show)
 
 Flags:
   -i, --id  Get details of a single cluster by its identifier
@@ -64,6 +65,7 @@ Examples:
 		newDeleteCommand(),
 		newGetKubeconfigCommand(),
 		newRotateCertsCommand(),
+		newTaskCommand(),
 	)
 
 	return cmd
