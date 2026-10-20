@@ -29,7 +29,9 @@ func NewNodeGroupCommand() *cobra.Command {
 		Long: `Manage nodegroups of a Kubernetes cluster.
 
 Subcommands:
-  list  List nodegroups of a cluster
+  list    List nodegroups of a cluster
+  resize  Resize a nodegroup by its desired node count
+  delete  Delete a nodegroup by its identifier
 
 Flags:
   -i, --id  Get details of a single nodegroup
@@ -58,7 +60,7 @@ Examples:
 
 	cmd.Flags().StringVar(&clusterID, "cluster-id", "", "cluster ID")
 	cmd.Flags().StringVarP(&groupID, "id", "i", "", "nodegroup ID to get details for")
-	cmd.AddCommand(newListCommand())
+	cmd.AddCommand(newListCommand(), newResizeCommand(), newDeleteCommand())
 
 	return cmd
 }
