@@ -30,6 +30,8 @@ func NewNodeGroupCommand() *cobra.Command {
 
 Subcommands:
   list    List nodegroups of a cluster
+  create  Create a nodegroup in a cluster
+  update  Update nodegroup labels, taints or autoscaling
   resize  Resize a nodegroup by its desired node count
   delete  Delete a nodegroup by its identifier
 
@@ -60,7 +62,7 @@ Examples:
 
 	cmd.Flags().StringVar(&clusterID, "cluster-id", "", "cluster ID")
 	cmd.Flags().StringVarP(&groupID, "id", "i", "", "nodegroup ID to get details for")
-	cmd.AddCommand(newListCommand(), newResizeCommand(), newDeleteCommand())
+	cmd.AddCommand(newListCommand(), newResizeCommand(), newDeleteCommand(), newCreateCommand(), newUpdateCommand())
 
 	return cmd
 }
