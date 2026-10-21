@@ -25,7 +25,7 @@ func NewNodeGroupCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "nodegroup",
-		Short: "Manage cluster nodegroups (list, get)",
+		Short: "Manage cluster nodegroups",
 		Long: `Manage nodegroups of a Kubernetes cluster.
 
 Subcommands:
