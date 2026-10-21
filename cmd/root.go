@@ -10,6 +10,10 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	_ "github.com/gophercloud/gophercloud/v2/openstack"
+	_ "github.com/gophercloud/gophercloud/v2/openstack/identity/v3/catalog"
+	_ "github.com/gophercloud/gophercloud/v2/openstack/identity/v3/tokens"
+
 	"jakapil-cli/cmd/mks"
 )
 
@@ -19,8 +23,8 @@ var cfgFile string
 var rootCmd = &cobra.Command{
 	Use:   "jakapil-cli",
 	Short: "Absolutely unofficial CLI client for Selectel services",
-	Long: `Absolutely unofficial CLI client for Selectel services.
-Just for now it supports only that subcommands, which can use already
+	Long: `Absolutely unofficial CLI client for Selectel cloud and baremetal services.
+Just for now it supports only those subcommands, which can use already
 existing go libraries from Selectel.`,
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
