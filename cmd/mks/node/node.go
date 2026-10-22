@@ -12,7 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"jakapil-cli/cmd/mks/client"
-	"jakapil-cli/cmd/mks/output"
+	"jakapil-cli/internal/output"
 )
 
 // NewNodeCommand returns the "node" subcommand.

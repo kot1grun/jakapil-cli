@@ -12,7 +12,7 @@ import (
 	"jakapil-cli/cmd/mks/kubeversion"
 	"jakapil-cli/cmd/mks/node"
 	"jakapil-cli/cmd/mks/nodegroup"
-	"jakapil-cli/cmd/mks/output"
+	"jakapil-cli/internal/output"
 )
 
 // NewMksCommand returns the parent "mks" command with its subcommands:

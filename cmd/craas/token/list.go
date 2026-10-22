@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"jakapil-cli/cmd/craas/client"
-	"jakapil-cli/cmd/mks/output"
+	"jakapil-cli/internal/output"
 )
 
 // newListCommand returns the "token list" subcommand that lists API tokens.

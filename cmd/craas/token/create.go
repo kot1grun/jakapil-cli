@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"jakapil-cli/cmd/craas/client"
-	"jakapil-cli/cmd/mks/output"
+	"jakapil-cli/internal/output"
 )
 
 // newCreateCommand returns the "token create" subcommand that requests a new

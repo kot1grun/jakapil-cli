@@ -10,7 +10,7 @@ import (
 	"jakapil-cli/cmd/craas/registry"
 	"jakapil-cli/cmd/craas/repository"
 	"jakapil-cli/cmd/craas/token"
-	"jakapil-cli/cmd/mks/output"
+	"jakapil-cli/internal/output"
 )
 
 // NewCraasCommand returns the parent "craas" command for the Selectel
