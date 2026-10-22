@@ -29,7 +29,8 @@ The following objects are supported: registries, repositories and tokens.`,
 
 	// Persistent flags are shared by all craas subcommands.
 	cmd.PersistentFlags().StringP(client.FlagToken, "t", "", "Selectel API token (default $SLT_KS_TOKEN)")
-	cmd.PersistentFlags().String(client.FlagEndpoint, client.DefaultEndpoint, "CRaaS API endpoint (default $SLT_CR_ENDPOINT)")
+	cmd.PersistentFlags().StringP(client.FlagEndpoint, "e", client.DefaultEndpoint, "Selectel Keystone Identity v3 auth URL for authentication and service discovery (default $SLT_AUTH_URL)")
+	cmd.PersistentFlags().Bool(client.FlagDebug, false, "print the discovered service catalog and CRaaS endpoints to stderr")
 	cmd.PersistentFlags().StringP("output", "o", output.YAML, "output format: json or yaml")
 
 	cmd.AddCommand(
