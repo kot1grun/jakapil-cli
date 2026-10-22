@@ -70,7 +70,19 @@ func renderJSON(w io.Writer, v interface{}) error {
 }
 
 func renderYAML(w io.Writer, v interface{}) error {
-	b, err := yaml.Marshal(v)
+	// Marshal through JSON first so the YAML mirrors the JSON representation,
+	// honouring json tags (including fields tagged json:"-" and omitempty) and
+	// avoiding the rendering of anonymous embedded structs (e.g. mks-go's
+	// BaseView) as a nested key.
+	jb, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	var data interface{}
+	if err := yaml.Unmarshal(jb, &data); err != nil {
+		return err
+	}
+	b, err := yaml.Marshal(data)
 	if err != nil {
 		return err
 	}

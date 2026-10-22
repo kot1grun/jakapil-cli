@@ -58,6 +58,48 @@ func TestPrintJSON(t *testing.T) {
 	}
 }
 
+// embeddedBaseView mimics the mks-go Cluster, which embeds an exported
+// BaseView struct holding some fields tagged with json:"-".
+type embeddedBaseView struct {
+	ID string `json:"id"`
+	// Secret is hidden in JSON (json:"-") and must stay hidden in YAML too.
+	Secret string `json:"-"`
+}
+
+type clusterLike struct {
+	Name string `json:"name"`
+	embeddedBaseView
+}
+
+// TestPrintYAMLMatchesJSON verifies that the YAML renderer produces the same
+// field set as the JSON renderer: it must not render anonymous embedded
+// structs (e.g. BaseView) as a nested key and must honour json:"-".
+func TestPrintYAMLMatchesJSON(t *testing.T) {
+	v := clusterLike{Name: "c1", embeddedBaseView: embeddedBaseView{ID: "abc", Secret: "hidden"}}
+
+	yamlOut, err := runRoot(t, []string{"leaf" /* default yaml */}, v)
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	jsonOut, err := runRoot(t, []string{"leaf", "--output", "json"}, v)
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	if !strings.Contains(yamlOut, "name: c1") || !strings.Contains(yamlOut, "id: abc") {
+		t.Fatalf("yaml should contain promoted BaseView fields, got:\n%s", yamlOut)
+	}
+	if strings.Contains(yamlOut, "embeddedBaseView") || strings.Contains(yamlOut, "baseview") {
+		t.Fatalf("yaml must not render the embedded struct as a nested key:\n%s", yamlOut)
+	}
+	if strings.Contains(yamlOut, "secret") {
+		t.Fatalf("yaml must not expose json:\"-\" field, got:\n%s\nyaml json:\n%s", yamlOut, jsonOut)
+	}
+	if strings.Contains(jsonOut, "secret") {
+		t.Fatalf("json unexpectedly contains json:\"-\" field:\n%s", jsonOut)
+	}
+}
+
 func TestPrintPlainList(t *testing.T) {
 	out, err := runRoot(t, []string{"leaf", "--output="}, []sample{{Name: "a"}, {Name: "b"}})
 	if err != nil {
