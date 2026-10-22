@@ -8,6 +8,8 @@ import (
 
 	"jakapil-cli/cmd/craas/client"
 	"jakapil-cli/cmd/craas/registry"
+	"jakapil-cli/cmd/craas/repository"
+	"jakapil-cli/cmd/craas/token"
 	"jakapil-cli/cmd/mks/output"
 )
 
@@ -19,7 +21,7 @@ func NewCraasCommand() *cobra.Command {
 		Short: "Manage Selectel Container Registry Service (CRaaS)",
 		Long: `Manage Selectel Container Registry Service (CRaaS).
 
-The following objects are supported: registries, repositories`,
+The following objects are supported: registries, repositories and tokens.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			_ = cmd.Help()
 		},
@@ -32,6 +34,8 @@ The following objects are supported: registries, repositories`,
 
 	cmd.AddCommand(
 		registry.NewRegistryCommand(),
+		repository.NewRepositoryCommand(),
+		token.NewTokenCommand(),
 	)
 
 	return cmd

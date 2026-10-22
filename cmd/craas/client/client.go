@@ -6,8 +6,10 @@ package client
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	craasclient "github.com/selectel/craas-go/pkg/v1/client"
+	craasclientv2 "github.com/selectel/craas-go/pkg/v2/client"
 	"github.com/spf13/cobra"
 )
 
@@ -33,24 +35,47 @@ const (
 )
 
 // NewClient builds an authenticated craas-go ServiceClient for the V1 API from
-// the given command. The token is taken from the "--token" flag or the
-// SLT_KS_TOKEN environment variable; the endpoint from the "--endpoint" flag,
-// otherwise from the SLT_CR_ENDPOINT environment variable, or DefaultEndpoint.
+// the given command using the resolved token and endpoint.
 func NewClient(cmd *cobra.Command) (*craasclient.ServiceClient, error) {
-	token, err := cmd.Flags().GetString(FlagToken)
+	token, endpoint, err := resolveCredentials(cmd)
 	if err != nil {
 		return nil, err
+	}
+
+	return craasclient.NewCRaaSClientV1(token, endpoint)
+}
+
+// NewClientV2 builds an authenticated craas-go ServiceClient for the V2 API
+// from the given command. The endpoint is derived from the resolved V1
+// endpoint by replacing its trailing version, so "…/api/v1" (or "…/api/v2")
+// becomes "…/api/v2".
+func NewClientV2(cmd *cobra.Command) (*craasclientv2.ServiceClient, error) {
+	token, endpoint, err := resolveCredentials(cmd)
+	if err != nil {
+		return nil, err
+	}
+	endpoint = v2Endpoint(endpoint)
+
+	return craasclientv2.NewCRaaSClientV2(token, endpoint)
+}
+
+// resolveCredentials returns the token and endpoint resolved from the command
+// flags with the environment variables as fallbacks.
+func resolveCredentials(cmd *cobra.Command) (string, string, error) {
+	token, err := cmd.Flags().GetString(FlagToken)
+	if err != nil {
+		return "", "", err
 	}
 	if token == "" {
 		token = os.Getenv(EnvToken)
 	}
 	if token == "" {
-		return nil, fmt.Errorf("a token is required: pass --token or set %s", EnvToken)
+		return "", "", fmt.Errorf("a token is required: pass --token or set %s", EnvToken)
 	}
 
 	endpoint, err := cmd.Flags().GetString(FlagEndpoint)
 	if err != nil {
-		return nil, err
+		return "", "", err
 	}
 	if endpoint == "" || !cmd.Flags().Changed(FlagEndpoint) {
 		if env := os.Getenv(EnvEndpoint); env != "" {
@@ -61,5 +86,15 @@ func NewClient(cmd *cobra.Command) (*craasclient.ServiceClient, error) {
 		endpoint = DefaultEndpoint
 	}
 
-	return craasclient.NewCRaaSClientV1(token, endpoint)
+	return token, endpoint, nil
+}
+
+// v2Endpoint returns the V2 API endpoint derived from a V1/V2 endpoint by
+// replacing its trailing version segment. A trailing slash is trimmed first so
+// the result always ends in "/v2".
+func v2Endpoint(endpoint string) string {
+	base := strings.TrimRight(endpoint, "/")
+	base = strings.TrimSuffix(base, "/v1")
+	base = strings.TrimSuffix(base, "/v2")
+	return base + "/v2"
 }
