@@ -4,20 +4,14 @@ Copyright © 2026 Kot1gruN
 package client
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
-	"strings"
-	"time"
 
-	"github.com/gophercloud/gophercloud/v2"
-	"github.com/gophercloud/gophercloud/v2/openstack"
-	tokens3 "github.com/gophercloud/gophercloud/v2/openstack/identity/v3/tokens"
 	v1 "github.com/selectel/mks-go/pkg/v1"
 	"github.com/spf13/cobra"
+
+	"jakapil-cli/internal/keystone"
 )
 
 const (
@@ -53,9 +47,6 @@ const (
 	// mksServiceType is the MKS service type as it appears in the Selectel
 	// service catalog.
 	mksServiceType = "managed-kubernetes"
-
-	// discoveryTimeout bounds the HTTP calls made during service discovery.
-	discoveryTimeout = 30 * time.Second
 )
 
 // NewClient builds a MKS V1 ServiceClient from the given command. Instead of
@@ -106,90 +97,14 @@ func NewClient(cmd *cobra.Command) (*v1.ServiceClient, error) {
 	return v1.NewMKSClientV1(token, mksEndpoint), nil
 }
 
-// discoverMKSEndpoint authenticates against the Keystone Identity v3 endpoint
-// with the given token, extracts the service catalog and returns the public MKS
-// API endpoint for the requested region (or the first available one when region
-// is empty). When debug is non-nil the discovered catalog and MKS endpoints are
-// printed to it.
+// discoverMKSEndpoint resolves the public MKS API endpoint for the requested
+// region from the Keystone service catalog.
 func discoverMKSEndpoint(identityEndpoint, token, region string, debug io.Writer) (string, error) {
-	provider, err := openstack.NewClient(identityEndpoint)
-	if err != nil {
-		return "", fmt.Errorf("invalid identity endpoint %q: %w", identityEndpoint, err)
-	}
-	provider.HTTPClient = http.Client{Timeout: discoveryTimeout}
-
-	authOpts := &gophercloud.AuthOptions{
+	return keystone.DiscoverEndpoint(keystone.Options{
 		IdentityEndpoint: identityEndpoint,
-		TokenID:          token,
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), discoveryTimeout)
-	defer cancel()
-
-	// With only a token and no scope, AuthenticateV3 performs an identity v3
-	// token lookup (catalog + tokens) and wires up provider.EndpointLocator to
-	// resolve endpoints from the discovered catalog.
-	if err := openstack.AuthenticateV3(ctx, provider, authOpts, gophercloud.EndpointOpts{}); err != nil {
-		return "", fmt.Errorf("service discovery via identity %q failed: %w", identityEndpoint, err)
-	}
-
-	mksEndpoint, err := provider.EndpointLocator(gophercloud.EndpointOpts{
-		Type:         mksServiceType,
-		Region:       region,
-		Availability: gophercloud.AvailabilityPublic,
+		Token:            token,
+		ServiceType:      mksServiceType,
+		Region:           region,
+		Debug:            debug,
 	})
-	if err != nil {
-		return "", fmt.Errorf("MKS endpoint for region %q not found in service catalog: %w", region, err)
-	}
-
-	// gophercloud.NormalizeURL appends a trailing slash to endpoints, but
-	// selectel/mks-go builds request URLs as strings.Join([]string{Endpoint,
-	// "clusters", id}, "/"). A trailing slash would produce a double slash
-	// (e.g. ".../v1//clusters/{id}") and a 404. Trim it before use.
-	mksEndpoint = strings.TrimRight(mksEndpoint, "/")
-
-	if debug != nil {
-		printDiscoveryDebug(debug, provider, region, mksEndpoint)
-	}
-
-	return mksEndpoint, nil
-}
-
-// printDiscoveryDebug dumps the raw service catalog and the MKS endpoints
-// selected from it to w. It is used only for troubleshooting.
-func printDiscoveryDebug(w io.Writer, provider *gophercloud.ProviderClient, region, mksEndpoint string) {
-	catalog, err := extractCatalog(provider)
-	if err != nil {
-		fmt.Fprintf(w, "debug: cannot extract service catalog: %v\n", err)
-		return
-	}
-
-	if raw, err := json.MarshalIndent(catalog, "", "  "); err == nil {
-		fmt.Fprintf(w, "debug: identity %q service catalog:\n%s\n", region, raw)
-	}
-
-	fmt.Fprintln(w, "debug: MKS endpoints by catalog entry:")
-	for _, entry := range catalog.Entries {
-		if entry.Type != mksServiceType {
-			continue
-		}
-		fmt.Fprintf(w, "  service %q (name=%s, id=%s):\n", entry.Type, entry.Name, entry.ID)
-		for _, ep := range entry.Endpoints {
-			fmt.Fprintf(w, "    interface=%-8s region=%s url=%s\n", ep.Interface, ep.Region, ep.URL)
-		}
-	}
-
-	fmt.Fprintf(w, "debug: selected MKS endpoint (region=%q): %s\n", region, mksEndpoint)
-}
-
-// extractCatalog returns the service catalog produced during authentication.
-func extractCatalog(provider *gophercloud.ProviderClient) (*tokens3.ServiceCatalog, error) {
-	switch r := provider.GetAuthResult().(type) {
-	case tokens3.CreateResult:
-		return r.ExtractServiceCatalog()
-	case tokens3.GetResult:
-		return r.ExtractServiceCatalog()
-	default:
-		return nil, fmt.Errorf("unexpected auth result type %T", provider.GetAuthResult())
-	}
 }

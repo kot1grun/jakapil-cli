@@ -4,21 +4,15 @@ Copyright © 2026 Kot1gruN
 package client
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
-	"strings"
-	"time"
 
-	"github.com/gophercloud/gophercloud/v2"
-	"github.com/gophercloud/gophercloud/v2/openstack"
-	tokens3 "github.com/gophercloud/gophercloud/v2/openstack/identity/v3/tokens"
 	craasclient "github.com/selectel/craas-go/pkg/v1/client"
 	craasclientv2 "github.com/selectel/craas-go/pkg/v2/client"
 	"github.com/spf13/cobra"
+
+	"jakapil-cli/internal/keystone"
 )
 
 const (
@@ -51,9 +45,6 @@ const (
 	// craasServiceTypeV2 is the CRaaS V2 service type as it appears in the
 	// Selectel service catalog.
 	craasServiceTypeV2 = "container-registry-v2"
-
-	// discoveryTimeout bounds the HTTP calls made during service discovery.
-	discoveryTimeout = 30 * time.Second
 )
 
 // NewClient builds an authenticated craas-go ServiceClient for the V1 API from
@@ -132,89 +123,14 @@ func resolveCredentials(cmd *cobra.Command) (string, string, io.Writer, error) {
 	return token, identityEndpoint, debugOut, nil
 }
 
-// discoverCRaasEndpoint authenticates against the Keystone Identity v3 endpoint
-// with the given token, extracts the service catalog and returns the public CRaaS
-// API endpoint for the requested service type ("container-registry" for V1 or
-// "container-registry-v2" for V2). CRaaS is not regional, so the single catalog
-// entry is used regardless of its region field. When debug is non-nil the
-// discovered catalog and CRaaS endpoints are printed to it.
+// discoverCRaasEndpoint resolves the public CRaaS API endpoint for the requested
+// service type from the Keystone service catalog. CRaaS is not regional, so an
+// empty region is passed, matching any catalog entry.
 func discoverCRaasEndpoint(identityEndpoint, token, serviceType string, debug io.Writer) (string, error) {
-	provider, err := openstack.NewClient(identityEndpoint)
-	if err != nil {
-		return "", fmt.Errorf("invalid identity endpoint %q: %w", identityEndpoint, err)
-	}
-	provider.HTTPClient = http.Client{Timeout: discoveryTimeout}
-
-	authOpts := &gophercloud.AuthOptions{
+	return keystone.DiscoverEndpoint(keystone.Options{
 		IdentityEndpoint: identityEndpoint,
-		TokenID:          token,
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), discoveryTimeout)
-	defer cancel()
-
-	// With only a token and no scope, AuthenticateV3 performs an identity v3
-	// token lookup (catalog + tokens) and wires up provider.EndpointLocator to
-	// resolve endpoints from the discovered catalog.
-	if err := openstack.AuthenticateV3(ctx, provider, authOpts, gophercloud.EndpointOpts{}); err != nil {
-		return "", fmt.Errorf("service discovery via identity %q failed: %w", identityEndpoint, err)
-	}
-
-	crEndpoint, err := provider.EndpointLocator(gophercloud.EndpointOpts{
-		Type:         serviceType,
-		Availability: gophercloud.AvailabilityPublic,
+		Token:            token,
+		ServiceType:      serviceType,
+		Debug:            debug,
 	})
-	if err != nil {
-		return "", fmt.Errorf("CRaaS endpoint for service type %q not found in service catalog: %w", serviceType, err)
-	}
-
-	// gophercloud.NormalizeURL appends a trailing slash to endpoints, but
-	// selectel/craas-go clients require the endpoint to end in "/v1" (or "/v2").
-	// A trailing slash would break the version-suffix check, so trim it.
-	crEndpoint = strings.TrimRight(crEndpoint, "/")
-
-	if debug != nil {
-		printCRaasDiscoveryDebug(debug, provider, serviceType, crEndpoint)
-	}
-
-	return crEndpoint, nil
-}
-
-// printCRaasDiscoveryDebug dumps the raw service catalog and the CRaaS endpoints
-// selected from it to w. It is used only for troubleshooting.
-func printCRaasDiscoveryDebug(w io.Writer, provider *gophercloud.ProviderClient, serviceType, crEndpoint string) {
-	catalog, err := extractCatalog(provider)
-	if err != nil {
-		fmt.Fprintf(w, "debug: cannot extract service catalog: %v\n", err)
-		return
-	}
-
-	if raw, err := json.MarshalIndent(catalog, "", "  "); err == nil {
-		fmt.Fprintf(w, "debug: identity service catalog:\n%s\n", raw)
-	}
-
-	fmt.Fprintln(w, "debug: CRaaS endpoints by catalog entry:")
-	for _, entry := range catalog.Entries {
-		if entry.Type != serviceType {
-			continue
-		}
-		fmt.Fprintf(w, "  service %q (name=%s, id=%s):\n", entry.Type, entry.Name, entry.ID)
-		for _, ep := range entry.Endpoints {
-			fmt.Fprintf(w, "    interface=%-8s region=%s url=%s\n", ep.Interface, ep.Region, ep.URL)
-		}
-	}
-
-	fmt.Fprintf(w, "debug: selected CRaaS endpoint (service=%q): %s\n", serviceType, crEndpoint)
-}
-
-// extractCatalog returns the service catalog produced during authentication.
-func extractCatalog(provider *gophercloud.ProviderClient) (*tokens3.ServiceCatalog, error) {
-	switch r := provider.GetAuthResult().(type) {
-	case tokens3.CreateResult:
-		return r.ExtractServiceCatalog()
-	case tokens3.GetResult:
-		return r.ExtractServiceCatalog()
-	default:
-		return nil, fmt.Errorf("unexpected auth result type %T", provider.GetAuthResult())
-	}
 }

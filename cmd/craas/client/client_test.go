@@ -4,12 +4,9 @@ Copyright © 2026 Kot1gruN
 package client
 
 import (
-	"bytes"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 )
 
@@ -59,7 +56,6 @@ func craasCatalog() []any {
 		craasServiceType, "Container Registry", "cr-v1-service",
 		[]any{
 			map[string]any{"interface": "public", "region": "", "url": "https://cr.selcloud.ru/api/v1"},
-			map[string]any{"interface": "admin", "region": "", "url": "https://cr-admin.selcloud.ru/api/v1"},
 		},
 	)
 	v2 := catalogEntry(
@@ -71,11 +67,15 @@ func craasCatalog() []any {
 	return append(v1, v2...)
 }
 
-func TestDiscoverCRaasEndpoint(t *testing.T) {
+// TestDiscoverCRaasEndpointWiring verifies that the CRaaS wrapper forwards the
+// requested service type (V1 vs V2) to the shared keystone discovery with an
+// empty region. Full discovery behavior (public-only interface, debug output)
+// is covered by the internal/keystone package tests.
+func TestDiscoverCRaasEndpointWiring(t *testing.T) {
 	srv := fakeKeystone(t, craasCatalog())
 	identityEndpoint := srv.URL + "/v3"
 
-	t.Run("discovers v1 endpoint", func(t *testing.T) {
+	t.Run("resolves v1 endpoint via container-registry service type", func(t *testing.T) {
 		got, err := discoverCRaasEndpoint(identityEndpoint, "test-token", craasServiceType, nil)
 		if err != nil {
 			t.Fatalf("discoverCRaasEndpoint: %v", err)
@@ -85,7 +85,7 @@ func TestDiscoverCRaasEndpoint(t *testing.T) {
 		}
 	})
 
-	t.Run("discovers v2 endpoint", func(t *testing.T) {
+	t.Run("resolves v2 endpoint via container-registry-v2 service type", func(t *testing.T) {
 		got, err := discoverCRaasEndpoint(identityEndpoint, "test-token", craasServiceTypeV2, nil)
 		if err != nil {
 			t.Fatalf("discoverCRaasEndpoint: %v", err)
@@ -94,78 +94,4 @@ func TestDiscoverCRaasEndpoint(t *testing.T) {
 			t.Fatalf("endpoint = %q, want %q", got, want)
 		}
 	})
-
-	t.Run("uses only public interface endpoints", func(t *testing.T) {
-		// The admin endpoint is listed first in the same entry; discovery must
-		// still pick the public one.
-		srvPublic := fakeKeystone(t, []any{
-			map[string]any{
-				"type": craasServiceType,
-				"name": "Container Registry",
-				"id":   "cr-v1-service",
-				"endpoints": []any{
-					map[string]any{"interface": "admin", "region": "", "url": "https://cr-admin.selcloud.ru/api/v1"},
-					map[string]any{"interface": "public", "region": "", "url": "https://cr.selcloud.ru/api/v1"},
-				},
-			},
-		})
-		got, err := discoverCRaasEndpoint(srvPublic.URL+"/v3", "test-token", craasServiceType, nil)
-		if err != nil {
-			t.Fatalf("discoverCRaasEndpoint: %v", err)
-		}
-		if want := "https://cr.selcloud.ru/api/v1"; got != want {
-			t.Fatalf("endpoint = %q, want %q", got, want)
-		}
-	})
-
-	t.Run("missing service type errors", func(t *testing.T) {
-		if _, err := discoverCRaasEndpoint(identityEndpoint, "test-token", "nonexistent", nil); err == nil {
-			t.Fatal("expected error for missing service type")
-		}
-	})
-
-	t.Run("does not require a region", func(t *testing.T) {
-		// A region-bound catalog entry (non-empty region) still resolves because
-		// CRaaS is not regional.
-		srvRegioned := fakeKeystone(t, []any{
-			map[string]any{
-				"type": craasServiceType,
-				"name": "Container Registry",
-				"id":   "cr-v1-service",
-				"endpoints": []any{
-					map[string]any{"interface": "public", "region": "ru-1", "url": "https://cr.ru-1.selcloud.ru/api/v1"},
-				},
-			},
-		})
-		got, err := discoverCRaasEndpoint(srvRegioned.URL+"/v3", "test-token", craasServiceType, nil)
-		if err != nil {
-			t.Fatalf("discoverCRaasEndpoint: %v", err)
-		}
-		if want := "https://cr.ru-1.selcloud.ru/api/v1"; got != want {
-			t.Fatalf("endpoint = %q, want %q", got, want)
-		}
-	})
-}
-
-func TestDiscoverCRaasEndpointDebugOutput(t *testing.T) {
-	srv := fakeKeystone(t, craasCatalog())
-	identityEndpoint := srv.URL + "/v3"
-
-	var buf bytes.Buffer
-	if _, err := discoverCRaasEndpoint(identityEndpoint, "test-token", craasServiceType, &buf); err != nil {
-		t.Fatalf("discoverCRaasEndpoint: %v", err)
-	}
-
-	out := buf.String()
-	for _, want := range []string{
-		`service catalog`,
-		fmt.Sprintf(`"type": %q`, craasServiceType),
-		fmt.Sprintf("interface=%-8s region=%s url=%s", "public", "", "https://cr.selcloud.ru/api/v1"),
-		fmt.Sprintf("interface=%-8s region=%s url=%s", "admin", "", "https://cr-admin.selcloud.ru/api/v1"),
-		fmt.Sprintf("debug: selected CRaaS endpoint (service=%q): https://cr.selcloud.ru/api/v1", craasServiceType),
-	} {
-		if !strings.Contains(out, want) {
-			t.Errorf("debug output missing %q; got:\n%s", want, out)
-		}
-	}
 }
