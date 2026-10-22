@@ -14,6 +14,7 @@ import (
 	_ "github.com/gophercloud/gophercloud/v2/openstack/identity/v3/catalog"
 	_ "github.com/gophercloud/gophercloud/v2/openstack/identity/v3/tokens"
 
+	"jakapil-cli/cmd/craas"
 	"jakapil-cli/cmd/mks"
 )
 
@@ -45,6 +46,9 @@ func init() {
 
 	// Register the mks command tree.
 	rootCmd.AddCommand(mks.NewMksCommand())
+
+	// Register the craas command tree.
+	rootCmd.AddCommand(craas.NewCraasCommand())
 
 	// Here you will define your flags and configuration settings.
 	// Cobra supports persistent flags, which, if defined here,

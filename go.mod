@@ -4,6 +4,7 @@ go 1.27.2
 
 require (
 	github.com/gophercloud/gophercloud/v2 v2.15.0
+	github.com/selectel/craas-go v0.4.2
 	github.com/selectel/mks-go v1.1.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
