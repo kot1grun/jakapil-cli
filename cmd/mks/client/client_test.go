@@ -193,3 +193,36 @@ func TestNewClientFlagWinsOverEnv(t *testing.T) {
 		t.Fatalf("NewClient: %v", err)
 	}
 }
+func TestNewClientReadsRegionFromOS_REGION_NAME(t *testing.T) {
+	const wantRegion = "ru-2"
+	const wantEndpoint = "https://mks.ru-2.examle.net/v1"
+
+	// The catalog lists ru-1 and ru-2; the endpoint resolved for the region
+	// selected from the environment lets us assert which one was used.
+	srv := tokenValidatedKeystone(t, "test-token")
+	cmd := mksCommand()
+	_ = cmd.Flags().Set(FlagEndpoint, srv.URL+"/v3")
+	_ = cmd.Flags().Set(FlagToken, "test-token")
+
+	os.Setenv(EnvRegion, wantRegion)
+	t.Cleanup(func() { os.Unsetenv(EnvRegion) })
+
+	// Point XDG at an empty dir so no real stored token interferes.
+	old, had := os.LookupEnv("XDG_CONFIG_HOME")
+	os.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Cleanup(func() {
+		if had {
+			os.Setenv("XDG_CONFIG_HOME", old)
+		} else {
+			os.Unsetenv("XDG_CONFIG_HOME")
+		}
+	})
+
+	cli, err := NewClient(cmd)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	if cli.Endpoint != wantEndpoint {
+		t.Fatalf("endpoint = %q, want %q (region from $%s not honored)", cli.Endpoint, wantEndpoint, EnvRegion)
+	}
+}
