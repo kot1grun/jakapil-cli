@@ -4,12 +4,17 @@ Copyright © 2026 Kot1gruN
 package authenticate
 
 import (
+	"bufio"
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"jakapil-cli/internal/authentication"
 )
@@ -34,6 +39,11 @@ const (
 	// FlagDebug enables debug hints (such as the token expiry) on stderr.
 	FlagDebug = "debug"
 
+	// FlagAskPass, when set, prompts for the password on stdin when it is not
+	// already present in the environment (OS_PASSWORD or the --env-prefix
+	// equivalent), and stores it in that variable for the duration of the run.
+	FlagAskPass = "ask-pass"
+
 	// EnvCloud is the environment variable used as a fallback for FlagCloud.
 	EnvCloud = "OS_CLOUD"
 
@@ -43,6 +53,11 @@ const (
 	// DefaultTokenFile is the default location where the acquired token is
 	// persisted (unless overridden by --token-file).
 	DefaultTokenFile = "~/.config/jakapil-cli/token"
+
+	// envPasswordSuffix is appended to the resolved env prefix to form the name
+	// of the password variable read by gophercloud clientconfig (for the default
+	// prefix this is OS_PASSWORD).
+	envPasswordSuffix = "PASSWORD"
 )
 
 // NewAuthenticateCommand returns the "authenticate" command. It logs in to the
@@ -57,7 +72,9 @@ func NewAuthenticateCommand() *cobra.Command {
 
 Credentials are resolved from the environment variables exported by an openrc
 file (OS_AUTH_URL, OS_USERNAME, OS_PASSWORD, ...) or from a clouds.yaml file
-selected with --cloud. On success the issued token is printed and stored in the
+selected with --cloud. With --ask-pass the password is prompted for interactively
+(when it is not already set in the environment) instead of requiring OS_PASSWORD.
+On success the issued token is printed and stored in the
 token file (default ` + DefaultTokenFile + `), which is used by the other
 commands as a token source in the absence of an explicit --token flag.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -71,6 +88,7 @@ commands as a token source in the absence of an explicit --token flag.`,
 	cmd.Flags().String(FlagAuthURL, "", "Selectel Keystone Identity v3 auth URL override (default $OS_AUTH_URL)")
 	cmd.Flags().String(FlagTokenFile, DefaultTokenFile, "where to store the issued token")
 	cmd.Flags().Bool(FlagDebug, false, "print the token expiry and storage path hints to stderr")
+	cmd.Flags().Bool(FlagAskPass, false, "prompt for the password on stdin when OS_PASSWORD (or the --env-prefix equivalent) is not set")
 
 	return cmd
 }
@@ -80,12 +98,17 @@ func run(cmd *cobra.Command) error {
 	envPrefix, _ := cmd.Flags().GetString(FlagEnvPrefix)
 	authURL, _ := cmd.Flags().GetString(FlagAuthURL)
 	debug, _ := cmd.Flags().GetBool(FlagDebug)
+	askPass, _ := cmd.Flags().GetBool(FlagAskPass)
 
 	// Honor OS_CLIENT_CONFIG_FILE when --config-file is not set, so clientconfig
 	// picks up the intended clouds.yaml. clientconfig already reads that env
 	// var itself, but we document it here for clarity.
 	if configFile, _ := cmd.Flags().GetString(FlagConfigFile); configFile != "" {
 		_ = os.Setenv(EnvConfigFile, configFile)
+	}
+
+	if err := ensurePassword(cmd, envPrefix, askPass); err != nil {
+		return err
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -121,4 +144,54 @@ func run(cmd *cobra.Command) error {
 	}
 
 	return nil
+}
+
+// ensurePassword makes sure the password is available for authentication when
+// --ask-pass is set. It writes the password to the environment under the
+// resolved prefix (OS_PASSWORD for the default "OS_" prefix) so clientconfig
+// picks it up. When the variable is already set it is left untouched.
+func ensurePassword(cmd *cobra.Command, envPrefix string, askPass bool) error {
+	if !askPass {
+		return nil
+	}
+
+	prefix := envPrefix
+	if prefix == "" {
+		prefix = "OS_"
+	}
+	envVar := prefix + envPasswordSuffix
+	if os.Getenv(envVar) != "" {
+		return nil
+	}
+
+	pwd, err := readSecret("Password: ", cmd.InOrStdin(), cmd.ErrOrStderr())
+	if err != nil {
+		return fmt.Errorf("failed to read password: %w", err)
+	}
+	if strings.TrimSpace(pwd) == "" {
+		return errors.New("password cannot be empty")
+	}
+	if err := os.Setenv(envVar, pwd); err != nil {
+		return fmt.Errorf("failed to set %s: %w", envVar, err)
+	}
+	return nil
+}
+
+// readSecret reads a single line of input without echoing it back when r is an
+// interactive terminal. For piped or redirected input (including tests) it falls
+// back to reading a plain line so the command keeps working non-interactively.
+func readSecret(prompt string, r io.Reader, w io.Writer) (string, error) {
+	fmt.Fprint(w, prompt)
+
+	if f, ok := r.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
+		raw, err := term.ReadPassword(int(f.Fd()))
+		fmt.Fprintln(w)
+		return string(raw), err
+	}
+
+	line, err := bufio.NewReader(r).ReadString('\n')
+	if err != nil && err != io.EOF {
+		return "", err
+	}
+	return strings.TrimRight(line, "\r\n"), nil
 }

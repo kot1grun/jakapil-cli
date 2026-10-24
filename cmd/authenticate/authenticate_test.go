@@ -154,3 +154,104 @@ func TestAuthenticateCommandFailsWithoutCredentials(t *testing.T) {
 		t.Fatal("expected error without credentials")
 	}
 }
+
+// runCommandWithInput is like runCommand but feeds input to the command's stdin,
+// which --ask-pass reads the password from.
+func runCommandWithInput(t *testing.T, input string, args ...string) (string, string, error) {
+	t.Helper()
+	cmd := NewAuthenticateCommand()
+	var out, errOut bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errOut)
+	cmd.SetIn(strings.NewReader(input))
+	cmd.SetArgs(args)
+	err := cmd.Execute()
+	return out.String(), errOut.String(), err
+}
+
+// setCredentialsEnvWithoutPassword sets private openrc variables under the test
+// prefix, leaving the password variable unset so --ask-pass has to fill it in.
+func setCredentialsEnvWithoutPassword(t *testing.T, authURL, username, project string) {
+	t.Helper()
+
+	prev := map[string]string{}
+	keys := []string{"AUTH_URL", "USERNAME", "PROJECT_NAME", "DOMAIN_NAME",
+		"USER_DOMAIN_NAME", "PROJECT_DOMAIN_NAME", "PASSWORD"}
+	for _, k := range keys {
+		if old, ok := os.LookupEnv(testEnvPrefix + k); ok {
+			prev[testEnvPrefix+k] = old
+		}
+	}
+
+	os.Setenv(testEnvPrefix+"AUTH_URL", authURL)
+	os.Setenv(testEnvPrefix+"USERNAME", username)
+	os.Setenv(testEnvPrefix+"PROJECT_NAME", project)
+	os.Setenv(testEnvPrefix+"DOMAIN_NAME", "Default")
+	os.Setenv(testEnvPrefix+"USER_DOMAIN_NAME", "Default")
+	os.Setenv(testEnvPrefix+"PROJECT_DOMAIN_NAME", "Default")
+	_ = os.Unsetenv(testEnvPrefix + "PASSWORD")
+
+	t.Cleanup(func() {
+		for k, old := range prev {
+			_ = os.Setenv(k, old)
+		}
+		for _, k := range keys {
+			if _, ok := prev[testEnvPrefix+k]; !ok {
+				_ = os.Unsetenv(testEnvPrefix + k)
+			}
+		}
+	})
+}
+
+func TestAuthenticateCommandAskPassPromptsForPassword(t *testing.T) {
+	srv := fakePasswordKeystone(t)
+	setCredentialsEnvWithoutPassword(t, srv.URL+"/v3", "demo", "project")
+	tokenFile := filepath.Join(t.TempDir(), "token")
+
+	out, errOut, err := runCommandWithInput(t, "typed-password\n",
+		"--env-prefix", testEnvPrefix,
+		"--auth-url", srv.URL+"/v3",
+		"--token-file", tokenFile,
+		"--ask-pass",
+	)
+	if err != nil {
+		t.Fatalf("authenticate --ask-pass: %v", err)
+	}
+	if got := strings.TrimSpace(out); got != "issued-token" {
+		t.Fatalf("stdout = %q, want %q", got, "issued-token")
+	}
+	if !strings.Contains(errOut, "Password: ") {
+		t.Fatalf("stderr missing password prompt; got:\n%s", errOut)
+	}
+	if got := os.Getenv(testEnvPrefix + "PASSWORD"); got != "typed-password" {
+		t.Fatalf("env password = %q, want %q", got, "typed-password")
+	}
+}
+
+func TestAuthenticateCommandAskPassKeepsExistingEnvPassword(t *testing.T) {
+	srv := fakePasswordKeystone(t)
+	setCredentialsEnvWithoutPassword(t, srv.URL+"/v3", "demo", "project")
+	// Provide the password in the environment so --ask-pass must not prompt.
+	os.Setenv(testEnvPrefix+"PASSWORD", "already-set")
+	t.Cleanup(func() { os.Unsetenv(testEnvPrefix + "PASSWORD") })
+	tokenFile := filepath.Join(t.TempDir(), "token")
+
+	out, errOut, err := runCommandWithInput(t, "should-not-be-read\n",
+		"--env-prefix", testEnvPrefix,
+		"--auth-url", srv.URL+"/v3",
+		"--token-file", tokenFile,
+		"--ask-pass",
+	)
+	if err != nil {
+		t.Fatalf("authenticate --ask-pass: %v", err)
+	}
+	if strings.TrimSpace(out) != "issued-token" {
+		t.Fatalf("stdout = %q, want %q", out, "issued-token")
+	}
+	if strings.Contains(errOut, "Password: ") {
+		t.Fatalf("--ask-pass prompted although the env password was already set; stderr:\n%s", errOut)
+	}
+	if got := os.Getenv(testEnvPrefix + "PASSWORD"); got != "already-set" {
+		t.Fatalf("env password overwritten = %q, want %q", got, "already-set")
+	}
+}
