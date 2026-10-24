@@ -4,6 +4,7 @@ Copyright © 2026 Kot1gruN
 package client
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -11,6 +12,7 @@ import (
 	v1 "github.com/selectel/mks-go/pkg/v1"
 	"github.com/spf13/cobra"
 
+	"jakapil-cli/internal/authentication"
 	"jakapil-cli/internal/keystone"
 )
 
@@ -61,11 +63,23 @@ const (
 // the "--region" flag, otherwise from the SLT_REGION environment variable.
 func NewClient(cmd *cobra.Command) (*v1.ServiceClient, error) {
 	token, err := cmd.Flags().GetString(FlagToken)
+	if err == nil && token == "" {
+		var storedErr error
+		token, storedErr = authentication.LoadUsableStoredToken()
+		if storedErr != nil {
+			if errors.Is(storedErr, authentication.ErrTokenExpired) {
+				return nil, storedErr
+			}
+			// A non-expiry read problem falls back to the environment, matching
+			// the previous behavior for an unreadable or missing token file.
+			token = ""
+		}
+	}
 	if err != nil || token == "" {
 		token = os.Getenv(EnvToken)
 	}
 	if token == "" {
-		return nil, fmt.Errorf("authentication token is required: pass --%s flag or set %s env var", FlagToken, EnvToken)
+		return nil, fmt.Errorf("authentication token is required: pass --%s flag, run \"jakapil-cli authenticate\", or set %s env var", FlagToken, EnvToken)
 	}
 
 	identityEndpoint, err := cmd.Flags().GetString(FlagEndpoint)

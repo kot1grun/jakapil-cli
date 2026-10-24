@@ -4,6 +4,7 @@ Copyright © 2026 Kot1gruN
 package client
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -12,6 +13,7 @@ import (
 	craasclientv2 "github.com/selectel/craas-go/pkg/v2/client"
 	"github.com/spf13/cobra"
 
+	"jakapil-cli/internal/authentication"
 	"jakapil-cli/internal/keystone"
 )
 
@@ -95,10 +97,22 @@ func resolveCredentials(cmd *cobra.Command) (string, string, io.Writer, error) {
 		return "", "", nil, err
 	}
 	if token == "" {
+		var storedErr error
+		token, storedErr = authentication.LoadUsableStoredToken()
+		if storedErr != nil {
+			if errors.Is(storedErr, authentication.ErrTokenExpired) {
+				return "", "", nil, storedErr
+			}
+			// A non-expiry read problem falls back to the environment, matching
+			// the previous behavior for an unreadable or missing token file.
+			token = ""
+		}
+	}
+	if token == "" {
 		token = os.Getenv(EnvToken)
 	}
 	if token == "" {
-		return "", "", nil, fmt.Errorf("a token is required: pass --%s or set %s", FlagToken, EnvToken)
+		return "", "", nil, fmt.Errorf("a token is required: pass --%s, run \"jakapil-cli authenticate\", or set %s", FlagToken, EnvToken)
 	}
 
 	identityEndpoint, err := cmd.Flags().GetString(FlagEndpoint)

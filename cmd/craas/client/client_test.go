@@ -7,7 +7,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
 )
 
 // fakeKeystone serves a minimal Identity v3 candidate token lookup (GET
@@ -92,6 +97,122 @@ func TestDiscoverCRaasEndpointWiring(t *testing.T) {
 		}
 		if want := "https://cr.selcloud.ru/api/v2"; got != want {
 			t.Fatalf("endpoint = %q, want %q", got, want)
+		}
+	})
+}
+
+// credentialsCommand builds a cobra command that registers the token, auth-url
+// and debug flags mirrored by resolveCredentials, so tests can exercise the
+// resolution logic in isolation.
+func credentialsCommand() *cobra.Command {
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().String(FlagToken, "", "")
+	cmd.Flags().String(FlagEndpoint, DefaultEndpoint, "")
+	cmd.Flags().Bool(FlagDebug, false, "")
+	return cmd
+}
+
+func TestResolveCredentialsPriority(t *testing.T) {
+	const tokenFlag = "--flag-token"
+	const tokenEnv = "--env-token"
+	const tokenFile = "--file-token"
+
+	// Point the default token file location at a temp dir.
+	writeStoredToken := func(t *testing.T, token string) string {
+		t.Helper()
+		dir := t.TempDir()
+		old, had := os.LookupEnv("XDG_CONFIG_HOME")
+		os.Setenv("XDG_CONFIG_HOME", dir)
+		t.Cleanup(func() {
+			if had {
+				os.Setenv("XDG_CONFIG_HOME", old)
+			} else {
+				os.Unsetenv("XDG_CONFIG_HOME")
+			}
+		})
+		tokenPath := filepath.Join(dir, "jakapil-cli", "token")
+		if err := os.MkdirAll(filepath.Dir(tokenPath), 0o700); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		if err := os.WriteFile(tokenPath, []byte(token), 0o600); err != nil {
+			t.Fatalf("write token: %v", err)
+		}
+		return tokenPath
+	}
+
+	t.Run("flag wins over env and file", func(t *testing.T) {
+		writeStoredToken(t, tokenFile)
+		cmd := credentialsCommand()
+		_ = cmd.Flags().Set(FlagToken, tokenFlag)
+		os.Setenv(EnvToken, tokenEnv)
+		t.Cleanup(func() { os.Unsetenv(EnvToken) })
+
+		token, _, _, err := resolveCredentials(cmd)
+		if err != nil {
+			t.Fatalf("resolveCredentials: %v", err)
+		}
+		if token != tokenFlag {
+			t.Fatalf("token = %q, want flag %q", token, tokenFlag)
+		}
+	})
+
+	t.Run("stored file wins over env", func(t *testing.T) {
+		writeStoredToken(t, tokenFile)
+		cmd := credentialsCommand()
+		os.Setenv(EnvToken, tokenEnv)
+		t.Cleanup(func() { os.Unsetenv(EnvToken) })
+
+		token, _, _, err := resolveCredentials(cmd)
+		if err != nil {
+			t.Fatalf("resolveCredentials: %v", err)
+		}
+		if token != tokenFile {
+			t.Fatalf("token = %q, want file %q", token, tokenFile)
+		}
+	})
+
+	t.Run("env is used when flag and file are absent", func(t *testing.T) {
+		old, had := os.LookupEnv("XDG_CONFIG_HOME")
+		os.Setenv("XDG_CONFIG_HOME", t.TempDir())
+		t.Cleanup(func() {
+			if had {
+				os.Setenv("XDG_CONFIG_HOME", old)
+			} else {
+				os.Unsetenv("XDG_CONFIG_HOME")
+			}
+		})
+		cmd := credentialsCommand()
+		os.Setenv(EnvToken, tokenEnv)
+		t.Cleanup(func() { os.Unsetenv(EnvToken) })
+
+		token, _, _, err := resolveCredentials(cmd)
+		if err != nil {
+			t.Fatalf("resolveCredentials: %v", err)
+		}
+		if token != tokenEnv {
+			t.Fatalf("token = %q, want env %q", token, tokenEnv)
+		}
+	})
+
+	t.Run("errors with hint when no source provides a token", func(t *testing.T) {
+		old, had := os.LookupEnv("XDG_CONFIG_HOME")
+		os.Setenv("XDG_CONFIG_HOME", t.TempDir())
+		t.Cleanup(func() {
+			if had {
+				os.Setenv("XDG_CONFIG_HOME", old)
+			} else {
+				os.Unsetenv("XDG_CONFIG_HOME")
+			}
+		})
+		cmd := credentialsCommand()
+		os.Unsetenv(EnvToken)
+
+		_, _, _, err := resolveCredentials(cmd)
+		if err == nil {
+			t.Fatal("expected error without a token source")
+		}
+		if !strings.Contains(err.Error(), "authenticate") {
+			t.Fatalf("error should hint at the authenticate command; got: %v", err)
 		}
 	})
 }
