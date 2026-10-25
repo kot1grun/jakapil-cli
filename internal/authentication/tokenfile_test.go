@@ -35,6 +35,58 @@ func TestTokenFilePathDefault(t *testing.T) {
 	}
 }
 
+func TestConfigFilePathDefault(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("test assumes a unix-style home layout")
+	}
+
+	// Force a known config dir so the result is deterministic even when the
+	// ambient XDG_CONFIG_HOME differs.
+	oldXDG, hadXDG := os.LookupEnv("XDG_CONFIG_HOME")
+	os.Setenv("XDG_CONFIG_HOME", "/tmp/jakapil-config")
+	t.Cleanup(func() {
+		if hadXDG {
+			os.Setenv("XDG_CONFIG_HOME", oldXDG)
+		} else {
+			os.Unsetenv("XDG_CONFIG_HOME")
+		}
+	})
+
+	got, err := ConfigFilePath()
+	if err != nil {
+		t.Fatalf("ConfigFilePath: %v", err)
+	}
+	if want := "/tmp/jakapil-config/jakapil-cli/jakapil-cli.yaml"; got != want {
+		t.Fatalf("path = %q, want %q", got, want)
+	}
+}
+
+func TestConfigDirMatchesTokenDir(t *testing.T) {
+	// The config file and the token file must share a single directory so that
+	// moving the config (as documented) keeps both pieces of state together.
+	oldXDG, hadXDG := os.LookupEnv("XDG_CONFIG_HOME")
+	os.Setenv("XDG_CONFIG_HOME", "/tmp/jakapil-config")
+	t.Cleanup(func() {
+		if hadXDG {
+			os.Setenv("XDG_CONFIG_HOME", oldXDG)
+		} else {
+			os.Unsetenv("XDG_CONFIG_HOME")
+		}
+	})
+
+	cfg, err := ConfigFilePath()
+	if err != nil {
+		t.Fatalf("ConfigFilePath: %v", err)
+	}
+	tok, err := TokenFilePath("")
+	if err != nil {
+		t.Fatalf("TokenFilePath: %v", err)
+	}
+	if filepath.Dir(cfg) != filepath.Dir(tok) {
+		t.Fatalf("config dir %q and token dir %q differ", filepath.Dir(cfg), filepath.Dir(tok))
+	}
+}
+
 func TestTokenFilePathOverride(t *testing.T) {
 	got, err := TokenFilePath("/custom/path/token")
 	if err != nil {

@@ -17,6 +17,7 @@ import (
 	"jakapil-cli/cmd/authenticate"
 	"jakapil-cli/cmd/craas"
 	"jakapil-cli/cmd/mks"
+	"jakapil-cli/internal/authentication"
 )
 
 var cfgFile string
@@ -58,7 +59,7 @@ func init() {
 	// Cobra supports persistent flags, which, if defined here,
 	// will be global for your application.
 
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.jakapil-cli.yaml)")
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $XDG_CONFIG_HOME/jakapil-cli.yaml, or ~/.config/jakapil-cli.yaml)")
 
 	// Cobra also supports local flags, which will only run
 	// when this action is called directly.
@@ -71,14 +72,16 @@ func initConfig() {
 		// Use config file from the flag.
 		viper.SetConfigFile(cfgFile)
 	} else {
-		// Find home directory.
-		home, err := os.UserHomeDir()
+		// Locate the configuration directory, the same one that also holds the
+		// persisted token: $XDG_CONFIG_HOME/jakapil-cli, or ~/.config/jakapil-cli.
+		configDir, err := authentication.ConfigDir()
 		cobra.CheckErr(err)
 
-		// Search config in home directory with name ".jakapil-cli" (without extension).
-		viper.AddConfigPath(home)
+		// Search config in the configuration directory with name "jakapil-cli"
+		// (without extension).
+		viper.AddConfigPath(configDir)
 		viper.SetConfigType("yaml")
-		viper.SetConfigName(".jakapil-cli")
+		viper.SetConfigName("jakapil-cli")
 	}
 
 	viper.AutomaticEnv() // read in environment variables that match

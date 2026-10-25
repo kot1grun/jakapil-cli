@@ -13,22 +13,22 @@ import (
 // that holds the persisted API token.
 const TokenFileName = "token"
 
+// ConfigFileName is the name of the main configuration file, which lives
+// next to the token file inside the configuration directory.
+const ConfigFileName = "jakapil-cli.yaml"
+
 // TokenFileMode is the permission bits applied to the token file. The token is
 // a secret, so only the owner may read or write it.
 const TokenFileMode os.FileMode = 0o600
 
-// TokenFilePath returns the path of the token file under the user's
-// configuration directory: $XDG_CONFIG_HOME/jakapil-cli/token, or
-// ~/.config/jakapil-cli/token when XDG_CONFIG_HOME is not set. The XDG layout
-// is used consistently (also on macOS, where os.UserConfigDir would otherwise
+// ConfigDir returns the directory that holds all jakapil-cli configuration
+// files: $XDG_CONFIG_HOME/jakapil-cli, or ~/.config/jakapil-cli when
+// XDG_CONFIG_HOME is not set. The token file and the main configuration file
+// (ConfigFileName) are stored together in this directory. The XDG layout is
+// used consistently (also on macOS, where os.UserConfigDir would otherwise
 // point into ~/Library/Application Support) so the location matches the value
-// printed by the authenticate command. When a non-empty override is given it
-// wins over the default location.
-func TokenFilePath(override string) (string, error) {
-	if override != "" {
-		return override, nil
-	}
-
+// printed by the authenticate command.
+func ConfigDir() (string, error) {
 	base, ok := os.LookupEnv("XDG_CONFIG_HOME")
 	if !ok || base == "" {
 		home, err := os.UserHomeDir()
@@ -38,7 +38,32 @@ func TokenFilePath(override string) (string, error) {
 		base = filepath.Join(home, ".config")
 	}
 
-	return filepath.Join(base, "jakapil-cli", TokenFileName), nil
+	return filepath.Join(base, "jakapil-cli"), nil
+}
+
+// ConfigFilePath returns the default path of the main configuration file under
+// the user's configuration directory: ConfigDir()/jakapil-cli.yaml.
+func ConfigFilePath() (string, error) {
+	dir, err := ConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, ConfigFileName), nil
+}
+
+// TokenFilePath returns the path of the token file under the user's
+// configuration directory: ConfigDir()/token. When a non-empty override is
+// given it wins over the default location.
+func TokenFilePath(override string) (string, error) {
+	if override != "" {
+		return override, nil
+	}
+
+	dir, err := ConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, TokenFileName), nil
 }
 
 // SaveToken writes the token to path, without expiry information. It is kept
