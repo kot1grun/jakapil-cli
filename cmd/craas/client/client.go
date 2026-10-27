@@ -114,7 +114,7 @@ func resolveCredentials(cmd *cobra.Command) (string, string, io.Writer, error) {
 		token = os.Getenv(EnvToken)
 	}
 	if token == "" {
-		return "", "", nil, fmt.Errorf("a token is required: pass --%s, run \"jakapil-cli authenticate\", or set %s", FlagToken, EnvToken)
+		return "", "", nil, fmt.Errorf("a token is required: pass --%s, run \"jakapil-cli authenticate token issue\", or set %s", FlagToken, EnvToken)
 	}
 
 	identityEndpoint, err := cmd.Flags().GetString(FlagEndpoint)

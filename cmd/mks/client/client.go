@@ -83,7 +83,7 @@ func NewClient(cmd *cobra.Command) (*v1.ServiceClient, error) {
 		token = os.Getenv(EnvToken)
 	}
 	if token == "" {
-		return nil, fmt.Errorf("authentication token is required: pass --%s flag, run \"jakapil-cli authenticate\", or set %s env var", FlagToken, EnvToken)
+		return nil, fmt.Errorf("authentication token is required: pass --%s flag, run \"jakapil-cli authenticate token issue\", or set %s env var", FlagToken, EnvToken)
 	}
 
 	identityEndpoint, err := cmd.Flags().GetString(FlagEndpoint)

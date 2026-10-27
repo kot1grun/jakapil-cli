@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -288,6 +289,79 @@ func TestLoadUsableStoredTokenBackwardCompat(t *testing.T) {
 	}
 }
 
+func TestSaveAndLoadTokensYAML(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "token")
+
+	issue := time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC)
+	projectExpiry := time.Date(2099, 1, 1, 1, 0, 0, 0, time.UTC)
+	accountExpiry := time.Date(2099, 1, 1, 2, 0, 0, 0, time.UTC)
+
+	records := []StoredToken{
+		{Token: "project-token", IssuedAt: issue, ExpiresAt: projectExpiry, Scope: ScopeProject},
+		{Token: "account-token", IssuedAt: issue, ExpiresAt: accountExpiry, Scope: ScopeAccount},
+	}
+	if err := SaveTokens(path, records); err != nil {
+		t.Fatalf("SaveTokens: %v", err)
+	}
+
+	// The on-disk layout is a YAML list keyed by the token/issued_at/expires_at/
+	// scope fields.
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	for _, want := range []string{"project-token", "account-token", "scope: project", "scope: account", "issued_at: 2099-01-01T00:00:00Z", "expires_at: 2099-01-01T01:00:00Z"} {
+		if !strings.Contains(string(content), want) {
+			t.Fatalf("token file missing %q; got:\n%s", want, content)
+		}
+	}
+
+	got, err := LoadTokens(path)
+	if err != nil {
+		t.Fatalf("LoadTokens: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("records = %d, want 2", len(got))
+	}
+	if got[0].Scope != ScopeProject || got[0].Token != "project-token" {
+		t.Fatalf("record[0] = %+v, want project token", got[0])
+	}
+	if got[1].Scope != ScopeAccount || got[1].Token != "account-token" {
+		t.Fatalf("record[1] = %+v, want account token", got[1])
+	}
+}
+
+func TestLoadTokenRecordPrefersProjectScope(t *testing.T) {
+	// When the token file holds an account token alongside a project token,
+	// loaders that serve the services (MKS, CRaaS) must pick the project one.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "token")
+	records := []StoredToken{
+		{Token: "account-token", Scope: ScopeAccount},
+		{Token: "project-token", Scope: ScopeProject},
+	}
+	if err := SaveTokens(path, records); err != nil {
+		t.Fatalf("SaveTokens: %v", err)
+	}
+
+	rec, err := LoadTokenRecord(path)
+	if err != nil {
+		t.Fatalf("LoadTokenRecord: %v", err)
+	}
+	if rec.Token != "project-token" || rec.Scope != ScopeProject {
+		t.Fatalf("record = %+v, want project token", rec)
+	}
+
+	tok, err := LoadToken(path)
+	if err != nil {
+		t.Fatalf("LoadToken: %v", err)
+	}
+	if tok != "project-token" {
+		t.Fatalf("token = %q, want project-token", tok)
+	}
+}
+
 func TestLoadUsableStoredTokenExpired(t *testing.T) {
 	dir := t.TempDir()
 	old, had := os.LookupEnv("XDG_CONFIG_HOME")
@@ -317,5 +391,28 @@ func TestLoadUsableStoredTokenExpired(t *testing.T) {
 	}
 	if !errors.Is(err, ErrTokenExpired) {
 		t.Fatalf("error = %v, want ErrTokenExpired", err)
+	}
+}
+func TestLoadTokensLegacyTwoLine(t *testing.T) {
+	// A pre-YAML file holding "token\nexpiry" loads as a single project record.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "token")
+	expiry := time.Now().Add(2 * time.Hour).Truncate(time.Second)
+	if err := os.WriteFile(path, []byte("legacy-token\n"+expiry.UTC().Format(time.RFC3339)+"\n"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	records, err := LoadTokens(path)
+	if err != nil {
+		t.Fatalf("LoadTokens: %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("records = %d, want 1", len(records))
+	}
+	if records[0].Token != "legacy-token" || records[0].Scope != ScopeProject {
+		t.Fatalf("record = %+v, want legacy project token", records[0])
+	}
+	if !records[0].ExpiresAt.Equal(expiry) {
+		t.Fatalf("ExpiresAt = %v, want %v", records[0].ExpiresAt, expiry)
 	}
 }

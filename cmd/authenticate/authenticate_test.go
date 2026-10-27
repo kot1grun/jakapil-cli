@@ -9,25 +9,19 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"jakapil-cli/internal/authentication"
 )
 
 const testEnvPrefix = "JAKAPIL_CLI_TEST_"
 
 // fakePasswordKeystone serves a minimal Identity v3 password auth endpoint
 // (POST /v3/auth/tokens) that validates username/password and returns a fixed
-// token.
+// token. It inspects the requested scope: a domain-scoped request (account
+// token) yields "account-token", any other request yields "project-token".
 func fakePasswordKeystone(t *testing.T) *httptest.Server {
 	t.Helper()
-
-	body, err := json.Marshal(map[string]any{
-		"token": map[string]any{
-			"id":         "issued-token",
-			"expires_at": "2099-01-01T00:00:00Z",
-		},
-	})
-	if err != nil {
-		t.Fatalf("marshal token: %v", err)
-	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v3/auth/tokens", func(w http.ResponseWriter, r *http.Request) {
@@ -35,7 +29,36 @@ func fakePasswordKeystone(t *testing.T) *httptest.Server {
 			http.Error(w, "expected POST", http.StatusMethodNotAllowed)
 			return
 		}
-		w.Header().Set("X-Subject-Token", "issued-token")
+
+		tokenID := "project-token"
+		issuedAt := "2099-01-01T00:00:00Z"
+		var req struct {
+			Auth struct {
+				Scope struct {
+					Domain struct {
+						Name string `json:"name"`
+						ID   string `json:"id"`
+					} `json:"domain"`
+				} `json:"scope"`
+			} `json:"auth"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		if scope := req.Auth.Scope; scope.Domain.Name != "" || scope.Domain.ID != "" {
+			tokenID = "account-token"
+		}
+
+		body, err := json.Marshal(map[string]any{
+			"token": map[string]any{
+				"id":         tokenID,
+				"issued_at":  issuedAt,
+				"expires_at": "2099-01-01T01:00:00Z",
+			},
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("X-Subject-Token", tokenID)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		_, _ = w.Write(body)
@@ -88,9 +111,19 @@ func runCommand(t *testing.T, args ...string) (string, string, error) {
 	var out, errOut bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&errOut)
-	cmd.SetArgs(args)
+	cmd.SetArgs(append([]string{"token", "issue"}, args...))
 	err := cmd.Execute()
 	return out.String(), errOut.String(), err
+}
+
+// mustRead returns the raw bytes of path, fatal on error. It is only for
+// producing readable test failure output.
+func mustRead(path string) string {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return "<read error: " + err.Error() + ">"
+	}
+	return string(b)
 }
 
 func TestAuthenticateCommand(t *testing.T) {
@@ -106,21 +139,74 @@ func TestAuthenticateCommand(t *testing.T) {
 	if err != nil {
 		t.Fatalf("authenticate: %v", err)
 	}
-	if got := strings.TrimSpace(out); got != "issued-token" {
-		t.Fatalf("stdout = %q, want %q", got, "issued-token")
+	if got := strings.TrimSpace(out); got != "project-token" {
+		t.Fatalf("stdout = %q, want %q", got, "project-token")
 	}
 
-	content, err := os.ReadFile(tokenFile)
+	records, err := authentication.LoadTokens(tokenFile)
 	if err != nil {
-		t.Fatalf("read token file: %v", err)
+		t.Fatalf("load token file: %v", err)
 	}
-	// The file now holds "token\nexpiry"; only the first line is the token.
-	firstLine := strings.SplitN(strings.TrimSpace(string(content)), "\n", 2)[0]
-	if firstLine != "issued-token" {
-		t.Fatalf("token file = %q, want %q", firstLine, "issued-token")
+	if len(records) != 1 {
+		t.Fatalf("token file holds %d record(s), want 1; content:\n%s", len(records), mustRead(tokenFile))
 	}
-	if !strings.Contains(string(content), "2099-01-01T00:00:00Z") {
-		t.Fatalf("token file missing expiry; got:\n%s", content)
+	rec := records[0]
+	if rec.Token != "project-token" {
+		t.Fatalf("token = %q, want %q", rec.Token, "project-token")
+	}
+	if rec.Scope != authentication.ScopeProject {
+		t.Fatalf("scope = %q, want %q", rec.Scope, authentication.ScopeProject)
+	}
+	wantIssued := time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC)
+	if !rec.IssuedAt.Equal(wantIssued) {
+		t.Fatalf("issued_at = %v, want %v", rec.IssuedAt, wantIssued)
+	}
+	wantExpiry := time.Date(2099, 1, 1, 1, 0, 0, 0, time.UTC)
+	if !rec.ExpiresAt.Equal(wantExpiry) {
+		t.Fatalf("expires_at = %v, want %v", rec.ExpiresAt, wantExpiry)
+	}
+}
+
+func TestAuthenticateCommandBothScopes(t *testing.T) {
+	srv := fakePasswordKeystone(t)
+	setCredentialsEnv(t, srv.URL+"/v3", "demo", "secret", "project")
+	tokenFile := filepath.Join(t.TempDir(), "token")
+
+	out, _, err := runCommand(t,
+		"--env-prefix", testEnvPrefix,
+		"--auth-url", srv.URL+"/v3",
+		"--token-file", tokenFile,
+		"--project-scope",
+		"--acc-scope",
+	)
+	if err != nil {
+		t.Fatalf("authenticate token issue: %v", err)
+	}
+	if got := strings.TrimSpace(out); got != "project-token\naccount-token" {
+		t.Fatalf("stdout = %q, want project-token then account-token", got)
+	}
+
+	records, err := authentication.LoadTokens(tokenFile)
+	if err != nil {
+		t.Fatalf("load token file: %v", err)
+	}
+	if len(records) != 2 {
+		t.Fatalf("token file holds %d record(s), want 2; content:\n%s", len(records), mustRead(tokenFile))
+	}
+	var project, account *authentication.StoredToken
+	for i := range records {
+		switch records[i].Scope {
+		case authentication.ScopeProject:
+			project = &records[i]
+		case authentication.ScopeAccount:
+			account = &records[i]
+		}
+	}
+	if project == nil || project.Token != "project-token" {
+		t.Fatalf("missing/wrong project token: %+v", project)
+	}
+	if account == nil || account.Token != "account-token" {
+		t.Fatalf("missing/wrong account token: %+v", account)
 	}
 }
 
@@ -138,10 +224,10 @@ func TestAuthenticateCommandDebug(t *testing.T) {
 	if err != nil {
 		t.Fatalf("authenticate: %v", err)
 	}
-	if strings.TrimSpace(out) != "issued-token" {
+	if strings.TrimSpace(out) != "project-token" {
 		t.Fatalf("stdout = %q, want token only", out)
 	}
-	for _, want := range []string{"token stored in", "token expires at 2099-01-01T00:00:00Z"} {
+	for _, want := range []string{"token(s) stored in", "project token expires at 2099-01-01T01:00:00Z"} {
 		if !strings.Contains(errOut, want) {
 			t.Fatalf("stderr missing %q; got:\n%s", want, errOut)
 		}
@@ -164,7 +250,7 @@ func runCommandWithInput(t *testing.T, input string, args ...string) (string, st
 	cmd.SetOut(&out)
 	cmd.SetErr(&errOut)
 	cmd.SetIn(strings.NewReader(input))
-	cmd.SetArgs(args)
+	cmd.SetArgs(append([]string{"token", "issue"}, args...))
 	err := cmd.Execute()
 	return out.String(), errOut.String(), err
 }
@@ -217,8 +303,8 @@ func TestAuthenticateCommandAskPassPromptsForPassword(t *testing.T) {
 	if err != nil {
 		t.Fatalf("authenticate --ask-pass: %v", err)
 	}
-	if got := strings.TrimSpace(out); got != "issued-token" {
-		t.Fatalf("stdout = %q, want %q", got, "issued-token")
+	if got := strings.TrimSpace(out); got != "project-token" {
+		t.Fatalf("stdout = %q, want %q", got, "project-token")
 	}
 	if !strings.Contains(errOut, "Password: ") {
 		t.Fatalf("stderr missing password prompt; got:\n%s", errOut)
@@ -245,8 +331,8 @@ func TestAuthenticateCommandAskPassKeepsExistingEnvPassword(t *testing.T) {
 	if err != nil {
 		t.Fatalf("authenticate --ask-pass: %v", err)
 	}
-	if strings.TrimSpace(out) != "issued-token" {
-		t.Fatalf("stdout = %q, want %q", out, "issued-token")
+	if strings.TrimSpace(out) != "project-token" {
+		t.Fatalf("stdout = %q, want %q", out, "project-token")
 	}
 	if strings.Contains(errOut, "Password: ") {
 		t.Fatalf("--ask-pass prompted although the env password was already set; stderr:\n%s", errOut)

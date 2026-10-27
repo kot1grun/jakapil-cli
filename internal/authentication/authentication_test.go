@@ -19,9 +19,11 @@ func fakePasswordKeystone(t *testing.T, username, password, project string) *htt
 	t.Helper()
 
 	expires := time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC)
+	issued := time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC).Add(-time.Hour)
 	body, err := json.Marshal(map[string]any{
 		"token": map[string]any{
 			"id":         "issued-token",
+			"issued_at":  issued.Format(time.RFC3339),
 			"expires_at": expires.Format(time.RFC3339),
 		},
 	})
@@ -174,6 +176,10 @@ func TestToken(t *testing.T) {
 	wantExp := time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC)
 	if !res.ExpiresAt.Equal(wantExp) {
 		t.Fatalf("expires_at = %v, want %v", res.ExpiresAt, wantExp)
+	}
+	wantIssued := wantExp.Add(-time.Hour)
+	if !res.IssuedAt.Equal(wantIssued) {
+		t.Fatalf("issued_at = %v, want %v", res.IssuedAt, wantIssued)
 	}
 }
 

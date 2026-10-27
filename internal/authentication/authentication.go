@@ -45,12 +45,20 @@ type Options struct {
 	// empty it is guessed from the auth URL and the OS_IDENTITY_API_VERSION
 	// variable, defaulting to 3.
 	IdentityVersion string
+
+	// Scope selects the token scope. ScopeProject (the default) requests a
+	// project-scoped token, which is what services such as MKS and CRaaS accept;
+	// ScopeAccount requests an account- (domain-) scoped token that unlocks
+	// account-level management APIs.
+	Scope Scope
 }
 
 // TokenResult carries the token issued by Keystone.
 type TokenResult struct {
 	// Token is the raw API token.
 	Token string
+	// IssuedAt is the moment the token was issued.
+	IssuedAt time.Time
 	// ExpiresAt is the moment after which the token is no longer accepted by
 	// the API.
 	ExpiresAt time.Time
@@ -78,9 +86,33 @@ func Token(ctx context.Context, opts Options) (TokenResult, error) {
 		if tok, err := create.ExtractToken(); err == nil {
 			result.ExpiresAt = tok.ExpiresAt
 		}
+		// gophercloud's ExtractToken exposes only the ID and expiry; the issue
+		// timestamp must be pulled from the raw response body.
+		if issued, err := extractIssuedAt(create); err == nil {
+			result.IssuedAt = issued
+		}
 	}
 
 	return result, nil
+}
+
+// extractIssuedAt reads the "issued_at" timestamp from the raw token response
+// body. It returns an error (ignored by the caller, which keeps the timestamp
+// at the zero time) when the field is absent or malformed.
+func extractIssuedAt(create tokens3.CreateResult) (time.Time, error) {
+	body, ok := create.Body.(map[string]any)
+	if !ok {
+		return time.Time{}, errors.New("token response body is not an object")
+	}
+	token, ok := body["token"].(map[string]any)
+	if !ok {
+		return time.Time{}, errors.New("token response has no token object")
+	}
+	raw, ok := token["issued_at"].(string)
+	if !ok {
+		return time.Time{}, errors.New("token response has no issued_at")
+	}
+	return time.Parse(time.RFC3339, raw)
 }
 
 // buildAuthOptions resolves the gophercloud AuthOptions from clouds.yaml or
@@ -126,5 +158,43 @@ func buildAuthOptions(opts Options) (*gophercloud.AuthOptions, error) {
 		return nil, fmt.Errorf("unsupported identity version %q: only v3 is supported", identityVersion)
 	}
 
+	if err := applyScope(authOpts, opts.Scope); err != nil {
+		return nil, err
+	}
+
 	return authOpts, nil
+}
+
+// applyScope pins the AuthOptions to the requested token scope. A project
+// scope keeps whatever scope clientconfig derived (it already yields a project
+// scope when a project is configured) but insists that a project is available.
+// An account scope requests a domain-scoped token, reusing the user's domain
+// (the Selectel account ID) even when a project is configured.
+func applyScope(authOpts *gophercloud.AuthOptions, scope Scope) error {
+	switch scope {
+	case ScopeAccount:
+		domainID, domainName := authOpts.DomainID, authOpts.DomainName
+		if domainID == "" && domainName == "" {
+			return errors.New("account scope requires a user domain (the account ID): set OS_USER_DOMAIN_NAME or OS_DOMAIN_NAME so it can be resolved")
+		}
+		authOpts.Scope = &gophercloud.AuthScope{
+			DomainID:   domainID,
+			DomainName: domainName,
+		}
+		// Clear any project scope so the account scope is not overridden.
+		authOpts.TenantID = ""
+		authOpts.TenantName = ""
+	case ScopeProject:
+		hasProject := authOpts.TenantID != "" || authOpts.TenantName != ""
+		if !hasProject && authOpts.Scope != nil {
+			hasProject = authOpts.Scope.ProjectID != "" || authOpts.Scope.ProjectName != ""
+		}
+		if !hasProject {
+			return errors.New("project scope requires a project: set OS_PROJECT_NAME (with OS_PROJECT_DOMAIN_NAME) or configure a project in clouds.yaml")
+		}
+	default:
+		// Empty scope keeps clientconfig's default behavior (project-scoped
+		// when a project is present, otherwise unscoped).
+	}
+	return nil
 }

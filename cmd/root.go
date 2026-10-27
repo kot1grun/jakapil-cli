@@ -52,7 +52,7 @@ func init() {
 	// Register the craas command tree.
 	rootCmd.AddCommand(craas.NewCraasCommand())
 
-	// Register the authenticate command (placeholder).
+	// Register the authenticate command tree (authenticate token issue).
 	rootCmd.AddCommand(authenticate.NewAuthenticateCommand())
 
 	// Here you will define your flags and configuration settings.
