@@ -17,6 +17,7 @@ import (
 	"jakapil-cli/cmd/authenticate"
 	"jakapil-cli/cmd/craas"
 	"jakapil-cli/cmd/mks"
+	"jakapil-cli/cmd/onboard"
 	"jakapil-cli/internal/authentication"
 )
 
@@ -54,6 +55,9 @@ func init() {
 
 	// Register the authenticate command tree (authenticate token issue).
 	rootCmd.AddCommand(authenticate.NewAuthenticateCommand())
+
+	// Register the onboard command (interactive jakapil-cli.yaml bootstrap).
+	rootCmd.AddCommand(onboard.NewOnboardCommand())
 
 	// Here you will define your flags and configuration settings.
 	// Cobra supports persistent flags, which, if defined here,
