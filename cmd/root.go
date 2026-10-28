@@ -15,6 +15,7 @@ import (
 	_ "github.com/gophercloud/gophercloud/v2/openstack/identity/v3/tokens"
 
 	"jakapil-cli/cmd/authenticate"
+	"jakapil-cli/cmd/config"
 	"jakapil-cli/cmd/craas"
 	"jakapil-cli/cmd/mks"
 	"jakapil-cli/cmd/onboard"
@@ -58,6 +59,9 @@ func init() {
 
 	// Register the onboard command (interactive jakapil-cli.yaml bootstrap).
 	rootCmd.AddCommand(onboard.NewOnboardCommand())
+
+	// Register the config command tree (config list).
+	rootCmd.AddCommand(config.NewConfigCommand())
 
 	// Here you will define your flags and configuration settings.
 	// Cobra supports persistent flags, which, if defined here,
