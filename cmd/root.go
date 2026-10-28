@@ -19,6 +19,7 @@ import (
 	"jakapil-cli/cmd/craas"
 	"jakapil-cli/cmd/mks"
 	"jakapil-cli/cmd/onboard"
+	"jakapil-cli/cmd/vpc"
 	"jakapil-cli/internal/authentication"
 )
 
@@ -62,6 +63,9 @@ func init() {
 
 	// Register the config command tree (config list).
 	rootCmd.AddCommand(config.NewConfigCommand())
+
+	// Register the vpc command tree (vpc network, vpc subnet).
+	rootCmd.AddCommand(vpc.NewVpcCommand())
 
 	// Here you will define your flags and configuration settings.
 	// Cobra supports persistent flags, which, if defined here,

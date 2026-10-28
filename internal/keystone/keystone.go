@@ -41,15 +41,15 @@ type Options struct {
 	Debug io.Writer
 }
 
-// DiscoverEndpoint authenticates against IdentityEndpoint with Token, extracts
-// the service catalog and returns the public endpoint URL for ServiceType,
-// filtered by Region when it is non-empty. The returned URL has no trailing
-// slash so version-suffixed endpoints (".../v1") that are validated by the
-// Selectel API clients are not broken.
-func DiscoverEndpoint(o Options) (string, error) {
+// Authenticate authenticates against IdentityEndpoint with Token and returns the
+// authenticated ProviderClient. Authentication wires up provider.EndpointLocator
+// from the resulting service catalog, which lets gophercloud ServiceClients
+// (for example openstack.NewNetworkV2 for the VPC networking service) resolve
+// their endpoints without repeating the lookup.
+func Authenticate(o Options) (*gophercloud.ProviderClient, error) {
 	provider, err := openstack.NewClient(o.IdentityEndpoint)
 	if err != nil {
-		return "", fmt.Errorf("invalid identity endpoint %q: %w", o.IdentityEndpoint, err)
+		return nil, fmt.Errorf("invalid identity endpoint %q: %w", o.IdentityEndpoint, err)
 	}
 	provider.HTTPClient = http.Client{Timeout: discoveryTimeout}
 
@@ -65,7 +65,21 @@ func DiscoverEndpoint(o Options) (string, error) {
 	// token lookup (catalog + tokens) and wires up provider.EndpointLocator to
 	// resolve endpoints from the discovered catalog.
 	if err := openstack.AuthenticateV3(ctx, provider, authOpts, gophercloud.EndpointOpts{}); err != nil {
-		return "", fmt.Errorf("service discovery via identity %q failed: %w", o.IdentityEndpoint, err)
+		return nil, fmt.Errorf("authentication via identity %q failed: %w", o.IdentityEndpoint, err)
+	}
+
+	return provider, nil
+}
+
+// DiscoverEndpoint authenticates against IdentityEndpoint with Token, extracts
+// the service catalog and returns the public endpoint URL for ServiceType,
+// filtered by Region when it is non-empty. The returned URL has no trailing
+// slash so version-suffixed endpoints (".../v1") that are validated by the
+// Selectel API clients are not broken.
+func DiscoverEndpoint(o Options) (string, error) {
+	provider, err := Authenticate(o)
+	if err != nil {
+		return "", err
 	}
 
 	serviceEndpoint, err := provider.EndpointLocator(gophercloud.EndpointOpts{
