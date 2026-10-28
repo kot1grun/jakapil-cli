@@ -97,6 +97,7 @@ func newTokenCommand() *cobra.Command {
 		Long:  "Manage the API tokens issued by the Selectel Keystone Identity service.",
 	}
 	cmd.AddCommand(newIssueTokenCommand())
+	cmd.AddCommand(newListTokenCommand())
 	return cmd
 }
 
@@ -216,6 +217,100 @@ func runIssue(cmd *cobra.Command) error {
 	}
 
 	return nil
+}
+
+// newListTokenCommand returns the "authenticate token list" command. It prints
+// the tokens persisted by "authenticate token issue": their scope (project or
+// account), when they were issued and expire, and whether they are still
+// usable. The token values are masked because they are secrets.
+func newListTokenCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List stored API tokens",
+		Long: `List the API tokens persisted by "authenticate token issue".
+
+Each stored token is shown together with its scope (project or account), the
+moment it was issued and expires, and whether it is still usable. The token
+value itself is masked because it is a secret.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runList(cmd)
+		},
+	}
+
+	cmd.Flags().String(FlagTokenFile, DefaultTokenFile, "token file to inspect")
+
+	return cmd
+}
+
+// runList implements the "authenticate token list" command. A missing token
+// file or a file with no tokens yields a friendly "none" line instead of an
+// error, so listing works before any token has been issued.
+func runList(cmd *cobra.Command) error {
+	tokenFile, _ := cmd.Flags().GetString(FlagTokenFile)
+	tokenFile = authentication.ExpandHome(tokenFile)
+
+	records, err := authentication.LoadTokens(tokenFile)
+	if err != nil {
+		return fmt.Errorf("failed to read token file %s: %w", tokenFile, err)
+	}
+
+	w := cmd.OutOrStdout()
+	fmt.Fprintf(w, "Tokens in %s:\n\n", tokenFile)
+
+	if len(records) == 0 {
+		fmt.Fprintln(w, "  none: run \"jakapil-cli authenticate token issue\" to issue and store a token")
+		return nil
+	}
+
+	fmt.Fprintf(w, "  %-10s  %-26s  %-26s  %s\n", "SCOPE", "ISSUED AT", "EXPIRES AT", "STATUS")
+	now := time.Now()
+	for _, r := range records {
+		fmt.Fprintf(w, "  %-10s  %-26s  %-26s  %s\n",
+			scopeLabel(r.Scope),
+			formatTokenTime(r.IssuedAt),
+			formatTokenTime(r.ExpiresAt),
+			tokenStatus(r, now),
+		)
+	}
+
+	return nil
+}
+
+// scopeLabel maps a stored token scope to the human-readable label used in the
+// listing output. Unknown scopes are shown verbatim so the output stays honest.
+func scopeLabel(scope authentication.Scope) string {
+	switch scope {
+	case authentication.ScopeProject:
+		return "project"
+	case authentication.ScopeAccount:
+		return "account"
+	default:
+		if scope == "" {
+			return "(unknown)"
+		}
+		return string(scope)
+	}
+}
+
+// formatTokenTime renders a timestamp for the listing output, or "-" when the
+// record carries no timestamp (for example a legacy single-token file).
+func formatTokenTime(t time.Time) string {
+	if t.IsZero() {
+		return "-"
+	}
+	return t.Format(time.RFC3339)
+}
+
+// tokenStatus reports whether a stored token is still usable. A token with no
+// recorded expiry is treated as usable. No secret material is shown.
+func tokenStatus(r authentication.StoredToken, now time.Time) string {
+	if r.ExpiresAt.IsZero() {
+		return "no expiry info"
+	}
+	if r.ExpiresAt.Before(now) {
+		return "expired"
+	}
+	return "valid"
 }
 
 // ensurePassword makes sure the password is available for authentication when

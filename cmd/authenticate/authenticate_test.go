@@ -341,3 +341,116 @@ func TestAuthenticateCommandAskPassKeepsExistingEnvPassword(t *testing.T) {
 		t.Fatalf("env password overwritten = %q, want %q", got, "already-set")
 	}
 }
+
+// runListCommand executes the "authenticate token list" command with the given
+// args and returns its stdout, stderr and error.
+func runListCommand(t *testing.T, args ...string) (string, string, error) {
+	t.Helper()
+	cmd := NewAuthenticateCommand()
+	var out, errOut bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errOut)
+	cmd.SetArgs(append([]string{"token", "list"}, args...))
+	err := cmd.Execute()
+	return out.String(), errOut.String(), err
+}
+
+func TestAuthenticateTokenList(t *testing.T) {
+	tokenFile := filepath.Join(t.TempDir(), "token")
+	issued := time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC)
+	expires := time.Date(2099, 1, 1, 1, 0, 0, 0, time.UTC)
+	err := authentication.SaveTokens(tokenFile, []authentication.StoredToken{
+		{Token: "project-token", Scope: authentication.ScopeProject, IssuedAt: issued, ExpiresAt: expires},
+		{Token: "account-token", Scope: authentication.ScopeAccount, IssuedAt: issued.Add(time.Hour), ExpiresAt: expires.Add(time.Hour)},
+	})
+	if err != nil {
+		t.Fatalf("seed token file: %v", err)
+	}
+
+	out, _, err := runListCommand(t, "--token-file", tokenFile)
+	if err != nil {
+		t.Fatalf("authenticate token list: %v", err)
+	}
+
+	for _, want := range []string{
+		"Tokens in " + tokenFile,
+		"SCOPE", "project", "account",
+		issued.Format(time.RFC3339), expires.Format(time.RFC3339),
+		"valid",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("output missing %q; got:\n%s", want, out)
+		}
+	}
+
+	// The token values are secrets and must never be printed.
+	for _, secret := range []string{"project-token", "account-token"} {
+		if strings.Contains(out, secret) {
+			t.Fatalf("output leaked secret %q; got:\n%s", secret, out)
+		}
+	}
+}
+
+func TestAuthenticateTokenListExpired(t *testing.T) {
+	tokenFile := filepath.Join(t.TempDir(), "token")
+	past := time.Now().Add(-time.Hour)
+	err := authentication.SaveTokens(tokenFile, []authentication.StoredToken{
+		{Token: "expired-token", Scope: authentication.ScopeProject, IssuedAt: past, ExpiresAt: past},
+	})
+	if err != nil {
+		t.Fatalf("seed token file: %v", err)
+	}
+
+	out, _, err := runListCommand(t, "--token-file", tokenFile)
+	if err != nil {
+		t.Fatalf("authenticate token list: %v", err)
+	}
+	if !strings.Contains(out, "expired") {
+		t.Fatalf("output missing expired status; got:\n%s", out)
+	}
+	if strings.Contains(out, "expired-token") {
+		t.Fatalf("output leaked secret %q; got:\n%s", "expired-token", out)
+	}
+}
+
+func TestAuthenticateTokenListEmpty(t *testing.T) {
+	// Point at a path that does not exist: the listing must degrade gracefully
+	// instead of failing.
+	tokenFile := filepath.Join(t.TempDir(), "does-not-exist")
+
+	out, _, err := runListCommand(t, "--token-file", tokenFile)
+	if err != nil {
+		t.Fatalf("authenticate token list on missing file: %v", err)
+	}
+	if !strings.Contains(out, "none") {
+		t.Fatalf("output missing friendly none line; got:\n%s", out)
+	}
+}
+
+func TestTokenStatusUnits(t *testing.T) {
+	now := time.Date(2099, 1, 1, 0, 30, 0, 0, time.UTC)
+	past := time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	if got := tokenStatus(authentication.StoredToken{ExpiresAt: time.Time{}}, now); got != "no expiry info" {
+		t.Fatalf("no-expiry token status = %q, want %q", got, "no expiry info")
+	}
+	if got := tokenStatus(authentication.StoredToken{ExpiresAt: past}, now); got != "expired" {
+		t.Fatalf("expired token status = %q, want %q", got, "expired")
+	}
+	if got := tokenStatus(authentication.StoredToken{ExpiresAt: now}, now); got != "valid" {
+		t.Fatalf("valid token status = %q, want %q", got, "valid")
+	}
+
+	if got := scopeLabel(authentication.ScopeProject); got != "project" {
+		t.Fatalf("scopeLabel(project) = %q, want project", got)
+	}
+	if got := scopeLabel(authentication.ScopeAccount); got != "account" {
+		t.Fatalf("scopeLabel(account) = %q, want account", got)
+	}
+	if got := scopeLabel(authentication.Scope("")); got != "(unknown)" {
+		t.Fatalf("scopeLabel(empty) = %q, want (unknown)", got)
+	}
+	if got := scopeLabel(authentication.Scope("custom")); got != "custom" {
+		t.Fatalf("scopeLabel(custom) = %q, want custom", got)
+	}
+}
