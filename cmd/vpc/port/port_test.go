@@ -6,85 +6,29 @@ package port
 import (
 	"bytes"
 	"context"
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/gophercloud/gophercloud/v2"
 	"github.com/spf13/cobra"
+
+	"jakapil-cli/cmd/vpc/testutil"
 )
 
-// fakeNeutron serves a minimal networking v2 ports API returning fixed
-// records, mirroring the subset used by the VPC port commands.
-func fakeNeutron(t *testing.T) *httptest.Server {
-	t.Helper()
-	mux := http.NewServeMux()
-
-	mux.HandleFunc("/v2.0/ports", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			writeJSON(t, w, http.StatusOK, map[string]any{
-				"ports": []map[string]any{
-					{"id": "port-1", "name": "pf", "network_id": "net-1", "status": "ACTIVE"},
-					{"id": "port-2", "name": "second", "network_id": "net-1", "status": "DOWN"},
-				},
-			})
-		case http.MethodPost:
-			var body struct {
-				Port map[string]any `json:"port"`
-			}
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-			if body.Port["network_id"] == "" {
-				http.Error(w, "network_id required", http.StatusBadRequest)
-				return
-			}
-			writeJSON(t, w, http.StatusCreated, map[string]any{
-				"port": map[string]any{
-					"id": "port-new", "name": "pf", "network_id": body.Port["network_id"], "status": "DOWN",
-				},
-			})
-		default:
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		}
-	})
-
-	mux.HandleFunc("/v2.0/ports/", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodPut:
-			writeJSON(t, w, http.StatusOK, map[string]any{
-				"port": map[string]any{"id": "port-1", "name": "renamed", "network_id": "net-1", "status": "ACTIVE"},
-			})
-		case http.MethodDelete:
-			w.WriteHeader(http.StatusNoContent)
-		default:
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		}
-	})
-
-	srv := httptest.NewServer(mux)
-	t.Cleanup(srv.Close)
-	return srv
-}
-
-func writeJSON(t *testing.T, w http.ResponseWriter, status int, v any) {
-	t.Helper()
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
-}
-
-func newTestClient(t *testing.T, ts *httptest.Server) *gophercloud.ServiceClient {
-	t.Helper()
-	return &gophercloud.ServiceClient{
-		ProviderClient: &gophercloud.ProviderClient{},
-		Endpoint:       ts.URL + "/",
-		ResourceBase:   ts.URL + "/v2.0/",
-	}
+// portResource is the port resource served by the fake server for the
+// port command tests. Ports have no "show" subcommand, so Get is nil.
+var portResource = testutil.Resource{
+	Path:         "ports",
+	ItemKey:      "port",
+	RequireField: "network_id",
+	List: []map[string]any{
+		{"id": "port-1", "name": "pf", "network_id": "net-1", "status": "ACTIVE"},
+		{"id": "port-2", "name": "second", "network_id": "net-1", "status": "DOWN"},
+	},
+	Get:     nil,
+	Updated: map[string]any{"id": "port-1", "name": "renamed", "network_id": "net-1", "status": "ACTIVE"},
+	Created: func(in map[string]any) map[string]any {
+		return map[string]any{"id": "port-new", "name": "pf", "network_id": in["network_id"], "status": "DOWN"}
+	},
 }
 
 func testCommand(t *testing.T) (*cobra.Command, *bytes.Buffer) {
@@ -111,10 +55,10 @@ func testCommand(t *testing.T) (*cobra.Command, *bytes.Buffer) {
 }
 
 func TestRunList(t *testing.T) {
-	ts := fakeNeutron(t)
+	ts := testutil.Neutron(t, portResource)
 	cmd, out := testCommand(t)
 
-	if err := runList(cmd, newTestClient(t, ts)); err != nil {
+	if err := runList(cmd, testutil.NewClient(ts)); err != nil {
 		t.Fatalf("runList: %v", err)
 	}
 	for _, want := range []string{"port-1", "pf", "port-2"} {
@@ -125,7 +69,7 @@ func TestRunList(t *testing.T) {
 }
 
 func TestRunCreate(t *testing.T) {
-	ts := fakeNeutron(t)
+	ts := testutil.Neutron(t, portResource)
 	cmd, out := testCommand(t)
 	if err := cmd.Flags().Set("network-id", "net-1"); err != nil {
 		t.Fatal(err)
@@ -134,7 +78,7 @@ func TestRunCreate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := runCreate(cmd, newTestClient(t, ts)); err != nil {
+	if err := runCreate(cmd, testutil.NewClient(ts)); err != nil {
 		t.Fatalf("runCreate: %v", err)
 	}
 	if !strings.Contains(out.String(), "port-new") {
@@ -143,22 +87,22 @@ func TestRunCreate(t *testing.T) {
 }
 
 func TestRunCreateRequiresNetwork(t *testing.T) {
-	ts := fakeNeutron(t)
+	ts := testutil.Neutron(t, portResource)
 	cmd, _ := testCommand(t)
 
-	if err := runCreate(cmd, newTestClient(t, ts)); err == nil {
+	if err := runCreate(cmd, testutil.NewClient(ts)); err == nil {
 		t.Fatal("expected error when --network-id is missing")
 	}
 }
 
 func TestRunUpdate(t *testing.T) {
-	ts := fakeNeutron(t)
+	ts := testutil.Neutron(t, portResource)
 	cmd, out := testCommand(t)
 	if err := cmd.Flags().Set("name", "renamed"); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := runUpdate(cmd, newTestClient(t, ts), []string{"port-1"}); err != nil {
+	if err := runUpdate(cmd, testutil.NewClient(ts), []string{"port-1"}); err != nil {
 		t.Fatalf("runUpdate: %v", err)
 	}
 	if !strings.Contains(out.String(), "renamed") {
@@ -167,19 +111,19 @@ func TestRunUpdate(t *testing.T) {
 }
 
 func TestRunUpdateRequiresOptions(t *testing.T) {
-	ts := fakeNeutron(t)
+	ts := testutil.Neutron(t, portResource)
 	cmd, _ := testCommand(t)
 
-	if err := runUpdate(cmd, newTestClient(t, ts), []string{"port-1"}); err == nil {
+	if err := runUpdate(cmd, testutil.NewClient(ts), []string{"port-1"}); err == nil {
 		t.Fatal("expected error when no update option is set")
 	}
 }
 
 func TestRunDelete(t *testing.T) {
-	ts := fakeNeutron(t)
+	ts := testutil.Neutron(t, portResource)
 	cmd, out := testCommand(t)
 
-	if err := runDelete(cmd, newTestClient(t, ts), []string{"port-1"}); err != nil {
+	if err := runDelete(cmd, testutil.NewClient(ts), []string{"port-1"}); err != nil {
 		t.Fatalf("runDelete: %v", err)
 	}
 	if !strings.Contains(out.String(), "port port-1 deleted") {

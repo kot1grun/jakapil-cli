@@ -6,90 +6,29 @@ package subnet
 import (
 	"bytes"
 	"context"
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/gophercloud/gophercloud/v2"
 	"github.com/spf13/cobra"
+
+	"jakapil-cli/cmd/vpc/testutil"
 )
 
-// fakeNeutron serves a minimal networking v2 subnets API returning fixed
-// records, mirroring the subset used by the VPC subnet commands.
-func fakeNeutron(t *testing.T) *httptest.Server {
-	t.Helper()
-	mux := http.NewServeMux()
-
-	mux.HandleFunc("/v2.0/subnets", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			writeJSON(t, w, http.StatusOK, map[string]any{
-				"subnets": []map[string]any{
-					{"id": "sub-1", "name": "sn", "network_id": "net-1", "cidr": "10.0.0.0/24", "ip_version": 4},
-					{"id": "sub-2", "name": "second", "network_id": "net-1", "cidr": "10.0.1.0/24", "ip_version": 4},
-				},
-			})
-		case http.MethodPost:
-			var body struct {
-				Subnet map[string]any `json:"subnet"`
-			}
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-			if body.Subnet["network_id"] == "" {
-				http.Error(w, "network_id required", http.StatusBadRequest)
-				return
-			}
-			writeJSON(t, w, http.StatusCreated, map[string]any{
-				"subnet": map[string]any{
-					"id": "sub-new", "name": "sn", "network_id": body.Subnet["network_id"],
-					"cidr": "10.0.2.0/24", "ip_version": 4,
-				},
-			})
-		default:
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		}
-	})
-
-	mux.HandleFunc("/v2.0/subnets/", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			writeJSON(t, w, http.StatusOK, map[string]any{
-				"subnet": map[string]any{"id": "sub-1", "name": "sn", "network_id": "net-1", "cidr": "10.0.0.0/24", "ip_version": 4},
-			})
-		case http.MethodPut:
-			writeJSON(t, w, http.StatusOK, map[string]any{
-				"subnet": map[string]any{"id": "sub-1", "name": "renamed", "network_id": "net-1", "cidr": "10.0.0.0/24", "ip_version": 4},
-			})
-		case http.MethodDelete:
-			w.WriteHeader(http.StatusNoContent)
-		default:
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		}
-	})
-
-	srv := httptest.NewServer(mux)
-	t.Cleanup(srv.Close)
-	return srv
-}
-
-func writeJSON(t *testing.T, w http.ResponseWriter, status int, v any) {
-	t.Helper()
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
-}
-
-func newTestClient(t *testing.T, ts *httptest.Server) *gophercloud.ServiceClient {
-	t.Helper()
-	return &gophercloud.ServiceClient{
-		ProviderClient: &gophercloud.ProviderClient{},
-		Endpoint:       ts.URL + "/",
-		ResourceBase:   ts.URL + "/v2.0/",
-	}
+// subnetResource is the subnet resource served by the fake server for the
+// subnet command tests.
+var subnetResource = testutil.Resource{
+	Path:         "subnets",
+	ItemKey:      "subnet",
+	RequireField: "network_id",
+	List: []map[string]any{
+		{"id": "sub-1", "name": "sn", "network_id": "net-1", "cidr": "10.0.0.0/24", "ip_version": 4},
+		{"id": "sub-2", "name": "second", "network_id": "net-1", "cidr": "10.0.1.0/24", "ip_version": 4},
+	},
+	Get:     map[string]any{"id": "sub-1", "name": "sn", "network_id": "net-1", "cidr": "10.0.0.0/24", "ip_version": 4},
+	Updated: map[string]any{"id": "sub-1", "name": "renamed", "network_id": "net-1", "cidr": "10.0.0.0/24", "ip_version": 4},
+	Created: func(in map[string]any) map[string]any {
+		return map[string]any{"id": "sub-new", "name": "sn", "network_id": in["network_id"], "cidr": "10.0.2.0/24", "ip_version": 4}
+	},
 }
 
 func testCommand(t *testing.T) (*cobra.Command, *bytes.Buffer) {
@@ -116,10 +55,10 @@ func testCommand(t *testing.T) (*cobra.Command, *bytes.Buffer) {
 }
 
 func TestRunList(t *testing.T) {
-	ts := fakeNeutron(t)
+	ts := testutil.Neutron(t, subnetResource)
 	cmd, out := testCommand(t)
 
-	if err := runList(cmd, newTestClient(t, ts)); err != nil {
+	if err := runList(cmd, testutil.NewClient(ts)); err != nil {
 		t.Fatalf("runList: %v", err)
 	}
 	for _, want := range []string{"sub-1", "sn", "10.0.0.0/24", "sub-2"} {
@@ -130,10 +69,10 @@ func TestRunList(t *testing.T) {
 }
 
 func TestRunShow(t *testing.T) {
-	ts := fakeNeutron(t)
+	ts := testutil.Neutron(t, subnetResource)
 	cmd, out := testCommand(t)
 
-	if err := runShow(cmd, newTestClient(t, ts), []string{"sub-1"}); err != nil {
+	if err := runShow(cmd, testutil.NewClient(ts), []string{"sub-1"}); err != nil {
 		t.Fatalf("runShow: %v", err)
 	}
 	if !strings.Contains(out.String(), "sub-1") {
@@ -142,7 +81,7 @@ func TestRunShow(t *testing.T) {
 }
 
 func TestRunCreate(t *testing.T) {
-	ts := fakeNeutron(t)
+	ts := testutil.Neutron(t, subnetResource)
 	cmd, out := testCommand(t)
 	if err := cmd.Flags().Set("network-id", "net-1"); err != nil {
 		t.Fatal(err)
@@ -151,7 +90,7 @@ func TestRunCreate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := runCreate(cmd, newTestClient(t, ts)); err != nil {
+	if err := runCreate(cmd, testutil.NewClient(ts)); err != nil {
 		t.Fatalf("runCreate: %v", err)
 	}
 	if !strings.Contains(out.String(), "sub-new") {
@@ -160,16 +99,16 @@ func TestRunCreate(t *testing.T) {
 }
 
 func TestRunCreateRequiresNetwork(t *testing.T) {
-	ts := fakeNeutron(t)
+	ts := testutil.Neutron(t, subnetResource)
 	cmd, _ := testCommand(t)
 
-	if err := runCreate(cmd, newTestClient(t, ts)); err == nil {
+	if err := runCreate(cmd, testutil.NewClient(ts)); err == nil {
 		t.Fatal("expected error when --network-id is missing")
 	}
 }
 
 func TestRunCreateRejectsBadIPVersion(t *testing.T) {
-	ts := fakeNeutron(t)
+	ts := testutil.Neutron(t, subnetResource)
 	cmd, _ := testCommand(t)
 	if err := cmd.Flags().Set("network-id", "net-1"); err != nil {
 		t.Fatal(err)
@@ -178,19 +117,19 @@ func TestRunCreateRejectsBadIPVersion(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := runCreate(cmd, newTestClient(t, ts)); err == nil {
+	if err := runCreate(cmd, testutil.NewClient(ts)); err == nil {
 		t.Fatal("expected error for unsupported IP version")
 	}
 }
 
 func TestRunUpdate(t *testing.T) {
-	ts := fakeNeutron(t)
+	ts := testutil.Neutron(t, subnetResource)
 	cmd, out := testCommand(t)
 	if err := cmd.Flags().Set("name", "renamed"); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := runUpdate(cmd, newTestClient(t, ts), []string{"sub-1"}); err != nil {
+	if err := runUpdate(cmd, testutil.NewClient(ts), []string{"sub-1"}); err != nil {
 		t.Fatalf("runUpdate: %v", err)
 	}
 	if !strings.Contains(out.String(), "renamed") {
@@ -199,19 +138,19 @@ func TestRunUpdate(t *testing.T) {
 }
 
 func TestRunUpdateRequiresOptions(t *testing.T) {
-	ts := fakeNeutron(t)
+	ts := testutil.Neutron(t, subnetResource)
 	cmd, _ := testCommand(t)
 
-	if err := runUpdate(cmd, newTestClient(t, ts), []string{"sub-1"}); err == nil {
+	if err := runUpdate(cmd, testutil.NewClient(ts), []string{"sub-1"}); err == nil {
 		t.Fatal("expected error when no update option is set")
 	}
 }
 
 func TestRunDelete(t *testing.T) {
-	ts := fakeNeutron(t)
+	ts := testutil.Neutron(t, subnetResource)
 	cmd, out := testCommand(t)
 
-	if err := runDelete(cmd, newTestClient(t, ts), []string{"sub-1"}); err != nil {
+	if err := runDelete(cmd, testutil.NewClient(ts), []string{"sub-1"}); err != nil {
 		t.Fatalf("runDelete: %v", err)
 	}
 	if !strings.Contains(out.String(), "subnet sub-1 deleted") {
