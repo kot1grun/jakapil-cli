@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"jakapil-cli/cmd/craas/client"
-	"jakapil-cli/internal/output"
 )
 
 // newCreateCommand returns the "registry create" subcommand that creates a new
@@ -43,7 +42,7 @@ Example:
 			if err != nil {
 				return err
 			}
-			return output.Print(cmd, r)
+			return render(cmd, r)
 		},
 	}
 

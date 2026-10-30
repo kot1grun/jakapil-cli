@@ -12,7 +12,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"jakapil-cli/cmd/mks/client"
-	"jakapil-cli/internal/output"
 )
 
 // NewNodeCommand returns the "node" subcommand.
@@ -55,7 +54,7 @@ Examples:
 			if err != nil {
 				return err
 			}
-			return output.Print(cmd, n)
+			return render(cmd, n)
 		},
 	}
 
@@ -97,7 +96,7 @@ single nodegroup.`,
 				if err != nil {
 					return err
 				}
-				return output.Print(cmd, ng.Nodes)
+				return render(cmd, ng.Nodes)
 			}
 
 			groups, _, err := mksnodegroup.List(ctx, mksClient, clusterID)
@@ -108,7 +107,7 @@ single nodegroup.`,
 			for _, ng := range groups {
 				nodes = append(nodes, ng.Nodes...)
 			}
-			return output.Print(cmd, nodes)
+			return render(cmd, nodes)
 		},
 	}
 

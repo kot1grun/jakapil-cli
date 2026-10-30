@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"jakapil-cli/cmd/mks/client"
-	"jakapil-cli/internal/output"
 )
 
 // NewKubeOptionsCommand returns the "kubeoptions" subcommand.
@@ -50,7 +49,7 @@ Examples:
 			if err != nil {
 				return err
 			}
-			return output.Print(cmd, available)
+			return render(cmd, available)
 		},
 	}
 
@@ -87,7 +86,7 @@ or admission controllers with "--admission-controllers".`,
 				return err
 			}
 
-			return output.Print(cmd, available)
+			return render(cmd, available)
 		},
 	}
 

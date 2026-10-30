@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"jakapil-cli/cmd/mks/client"
-	"jakapil-cli/internal/output"
 )
 
 // NewKubeVersionCommand returns the "kubeversion" subcommand.
@@ -55,7 +54,7 @@ func newListCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return output.Print(cmd, versions)
+			return render(cmd, versions)
 		},
 	}
 }

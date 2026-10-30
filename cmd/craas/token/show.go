@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"jakapil-cli/cmd/craas/client"
-	"jakapil-cli/internal/output"
 )
 
 // newShowCommand returns the "token show" subcommand that returns a single
@@ -41,7 +40,7 @@ Example:
 			if err != nil {
 				return err
 			}
-			return output.Print(cmd, t)
+			return render(cmd, t)
 		},
 	}
 

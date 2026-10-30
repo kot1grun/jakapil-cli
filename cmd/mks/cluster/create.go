@@ -13,7 +13,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"jakapil-cli/cmd/mks/client"
-	"jakapil-cli/internal/output"
 )
 
 // newCreateCommand returns the "cluster create" subcommand that creates a
@@ -54,7 +53,7 @@ Example:
 			if err != nil {
 				return err
 			}
-			return output.Print(cmd, cl)
+			return render(cmd, cl)
 		},
 	}
 

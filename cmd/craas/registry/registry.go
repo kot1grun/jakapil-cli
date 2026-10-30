@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"jakapil-cli/cmd/craas/client"
-	"jakapil-cli/internal/output"
 )
 
 // NewRegistryCommand returns the "registry" subcommand.
@@ -53,7 +52,7 @@ Examples:
 			if err != nil {
 				return err
 			}
-			return output.Print(cmd, r)
+			return render(cmd, r)
 		},
 	}
 
@@ -86,7 +85,7 @@ func newListCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return output.Print(cmd, registries)
+			return render(cmd, registries)
 		},
 	}
 }

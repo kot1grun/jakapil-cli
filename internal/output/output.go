@@ -105,6 +105,29 @@ func IsTable(cmd *cobra.Command) bool {
 	return format == Table
 }
 
+// YesNo renders a boolean as a compact "yes"/"no" value for table cells.
+func YesNo(b bool) string {
+	if b {
+		return "yes"
+	}
+	return "no"
+}
+
+// HumanBytes renders a byte count in a human-readable decimal form (KiB/MiB/
+// GiB/...), used to keep table cells short.
+func HumanBytes(n int64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%d B", n)
+	}
+	div, exp := int64(unit), 0
+	for m := n / unit; m >= unit; m /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGTPE"[exp])
+}
+
 // PrintTable renders header and rows as an aligned table to the command output.
 // The table is built on top of rivo/tview's Table widget and rendered through a
 // tcell simulation screen, so column widths and alignment match what tview

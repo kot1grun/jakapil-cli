@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"jakapil-cli/cmd/craas/client"
-	"jakapil-cli/internal/output"
 )
 
 // newCreateCommand returns the "token create" subcommand that requests a new
@@ -40,7 +39,7 @@ Example:
 			if err != nil {
 				return err
 			}
-			return output.Print(cmd, t)
+			return render(cmd, t)
 		},
 	}
 

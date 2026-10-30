@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"jakapil-cli/cmd/craas/client"
-	"jakapil-cli/internal/output"
 )
 
 // NewRepositoryCommand returns the "repository" subcommand.
@@ -75,7 +74,7 @@ Example:
 			if err != nil {
 				return err
 			}
-			return output.Print(cmd, repos)
+			return render(cmd, repos)
 		},
 	}
 

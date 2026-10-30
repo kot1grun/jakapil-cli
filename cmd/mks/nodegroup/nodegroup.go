@@ -11,7 +11,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"jakapil-cli/cmd/mks/client"
-	"jakapil-cli/internal/output"
 )
 
 // NewNodeGroupCommand returns the "nodegroup" subcommand.
@@ -56,7 +55,7 @@ Examples:
 			if err != nil {
 				return err
 			}
-			return output.Print(cmd, ng)
+			return render(cmd, ng)
 		},
 	}
 
@@ -90,7 +89,7 @@ func newListCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return output.Print(cmd, groups)
+			return render(cmd, groups)
 		},
 	}
 

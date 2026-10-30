@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"jakapil-cli/cmd/mks/client"
-	"jakapil-cli/internal/output"
 )
 
 // NewClusterCommand returns the "cluster" subcommand.
@@ -54,7 +53,7 @@ Examples:
 			if err != nil {
 				return err
 			}
-			return output.Print(cmd, cl)
+			return render(cmd, cl)
 		},
 	}
 
@@ -88,7 +87,7 @@ func newListCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return output.Print(cmd, clusters)
+			return render(cmd, clusters)
 		},
 	}
 }

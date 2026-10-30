@@ -18,42 +18,17 @@ import (
 // only the fields most useful for scanning multiple networks.
 var networkHeader = []string{"ID", "Name", "Status", "Shared", "Project ID"}
 
-// render formats v according to the --output flag, falling back to the compact
-// table renderer when the table format is selected.
 func render(cmd *cobra.Command, v interface{}) error {
-	if !output.IsTable(cmd) {
-		return output.Print(cmd, v)
-	}
-	header, rows, err := networkTable(v)
-	if err != nil {
-		return err
-	}
-	return output.PrintTable(cmd, header, rows)
+	return output.PrintTableValue(cmd, v, toTable)
 }
 
-// networkTable converts a single network or a slice of them into table rows.
-func networkTable(v interface{}) ([]string, [][]string, error) {
-	var items []networks.Network
-	switch data := v.(type) {
-	case []networks.Network:
-		items = data
-	case *networks.Network:
-		items = []networks.Network{*data}
-	default:
-		return nil, nil, fmt.Errorf("cannot render %T as a network table", v)
+func toTable(v interface{}) ([]string, [][]string, error) {
+	if rows := output.RowsOfValues(v, networkRow); rows != nil {
+		return networkHeader, rows, nil
 	}
-
-	rows := make([][]string, 0, len(items))
-	for _, n := range items {
-		rows = append(rows, []string{n.ID, n.Name, n.Status, yesNo(n.Shared), n.ProjectID})
-	}
-	return networkHeader, rows, nil
+	return nil, nil, fmt.Errorf("cannot render %T as a table", v)
 }
 
-// yesNo renders a boolean as a compact yes/no value.
-func yesNo(b bool) string {
-	if b {
-		return "yes"
-	}
-	return "no"
+func networkRow(n networks.Network) []string {
+	return []string{n.ID, n.Name, n.Status, output.YesNo(n.Shared), n.ProjectID}
 }

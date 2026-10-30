@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"jakapil-cli/cmd/craas/client"
-	"jakapil-cli/internal/output"
 )
 
 // newRefreshCommand returns the "token refresh" subcommand that refreshes a
@@ -41,7 +40,7 @@ Example:
 			if err != nil {
 				return err
 			}
-			return output.Print(cmd, t)
+			return render(cmd, t)
 		},
 	}
 

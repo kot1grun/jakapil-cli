@@ -17,49 +17,25 @@ import (
 // subnetHeader lists the compact columns shown for the table format.
 var subnetHeader = []string{"ID", "Name", "Network ID", "CIDR", "IP Version", "DHCP", "Gateway IP"}
 
-// render formats v according to the --output flag.
 func render(cmd *cobra.Command, v interface{}) error {
-	if !output.IsTable(cmd) {
-		return output.Print(cmd, v)
-	}
-	header, rows, err := subnetTable(v)
-	if err != nil {
-		return err
-	}
-	return output.PrintTable(cmd, header, rows)
+	return output.PrintTableValue(cmd, v, toTable)
 }
 
-// subnetTable converts a single subnet or a slice of them into table rows.
-func subnetTable(v interface{}) ([]string, [][]string, error) {
-	var items []subnets.Subnet
-	switch data := v.(type) {
-	case []subnets.Subnet:
-		items = data
-	case *subnets.Subnet:
-		items = []subnets.Subnet{*data}
-	default:
-		return nil, nil, fmt.Errorf("cannot render %T as a subnet table", v)
+func toTable(v interface{}) ([]string, [][]string, error) {
+	if rows := output.RowsOfValues(v, subnetRow); rows != nil {
+		return subnetHeader, rows, nil
 	}
-
-	rows := make([][]string, 0, len(items))
-	for _, s := range items {
-		rows = append(rows, []string{
-			s.ID,
-			s.Name,
-			s.NetworkID,
-			s.CIDR,
-			strconv.Itoa(s.IPVersion),
-			yesNo(s.EnableDHCP),
-			s.GatewayIP,
-		})
-	}
-	return subnetHeader, rows, nil
+	return nil, nil, fmt.Errorf("cannot render %T as a table", v)
 }
 
-// yesNo renders a boolean as a compact yes/no value.
-func yesNo(b bool) string {
-	if b {
-		return "yes"
+func subnetRow(s subnets.Subnet) []string {
+	return []string{
+		s.ID,
+		s.Name,
+		s.NetworkID,
+		s.CIDR,
+		strconv.Itoa(s.IPVersion),
+		output.YesNo(s.EnableDHCP),
+		s.GatewayIP,
 	}
-	return "no"
 }

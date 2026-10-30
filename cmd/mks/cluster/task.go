@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"jakapil-cli/cmd/mks/client"
-	"jakapil-cli/internal/output"
 )
 
 // newTaskCommand returns the "cluster task" subcommand group.
@@ -58,7 +57,7 @@ func newTaskListCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return output.Print(cmd, tasks)
+			return render(cmd, tasks)
 		},
 	}
 
@@ -96,7 +95,7 @@ func newTaskShowCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return output.Print(cmd, task)
+			return render(cmd, task)
 		},
 	}
 
