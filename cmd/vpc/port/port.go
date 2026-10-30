@@ -54,6 +54,7 @@ func newListCommand() *cobra.Command {
 	cmd.Flags().String("device-id", "", "filter ports by attached device ID")
 	cmd.Flags().String("id", "", "filter ports by ID")
 	cmd.Flags().Int("limit", 0, "maximum number of ports to return")
+	cmd.Flags().Bool(client.FlagAllRegions, false, "list ports in every region the service advertises instead of --region")
 	return cmd
 }
 

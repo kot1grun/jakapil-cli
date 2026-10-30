@@ -28,8 +28,9 @@ const (
 	// service discovery.
 	FlagRegion = "region"
 
-	// FlagAllRegions is the persistent flag name that selects every region the
-	// service advertises in the catalog instead of a single --region.
+	// FlagAllRegions is the flag name that selects every region the
+	// service advertises in the catalog instead of a single --region. It is
+	// registered as a local flag on the list subcommands only.
 	FlagAllRegions = "all-regions"
 
 	// FlagDebug is the persistent flag name that enables debug output of the

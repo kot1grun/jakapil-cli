@@ -14,6 +14,7 @@ import (
 
 	"jakapil-cli/cmd/mks/client"
 	"jakapil-cli/internal/output"
+	"jakapil-cli/internal/parallel"
 )
 
 // NewNodeCommand returns the "node" subcommand.
@@ -106,6 +107,7 @@ single nodegroup.`,
 
 	cmd.Flags().StringVar(&clusterID, "cluster-id", "", "cluster ID")
 	cmd.Flags().StringVar(&nodegroupID, "nodegroup-id", "", "nodegroup ID")
+	cmd.Flags().Bool(client.FlagAllRegions, false, "list nodes in every region the service advertises instead of --region")
 
 	return cmd
 }
@@ -135,7 +137,9 @@ func listNodesInRegion(ctx context.Context, c *v1.ServiceClient, clusterID, node
 
 // runListAllRegions lists nodes of a cluster in every region the service
 // advertises and renders the aggregated result with a "Region" column (table)
-// or grouped by region (json/yaml), backed by the --all-regions flag.
+// or grouped by region (json/yaml), backed by the --all-regions flag. Regions
+// are queried in parallel with parallel.Regions, since the underlying calls are
+// read-only GETs.
 func runListAllRegions(cmd *cobra.Command, clusterID, nodegroupID string) error {
 	regions, clients, err := client.NewClients(cmd)
 	if err != nil {
@@ -143,19 +147,26 @@ func runListAllRegions(cmd *cobra.Command, clusterID, nodegroupID string) error 
 	}
 	ctx := context.Background()
 
-	regionRows := make([]output.RegionRows, 0, len(regions))
-	grouped := make([]output.RegionValue, 0, len(regions))
-	for _, region := range regions {
+	results := parallel.Regions(ctx, regions, func(ctx context.Context, region string) ([][]string, interface{}, error) {
 		nodes, err := listNodesInRegion(ctx, clients[region], clusterID, nodegroupID)
 		if err != nil {
-			return fmt.Errorf("region %s: %w", region, err)
+			return nil, nil, fmt.Errorf("region %s: %w", region, err)
 		}
 		rows := make([][]string, 0, len(nodes))
 		for _, n := range nodes {
 			rows = append(rows, nodeRow(n))
 		}
-		regionRows = append(regionRows, output.RegionRows{Region: region, Rows: rows})
-		grouped = append(grouped, output.RegionValue{Region: region, Value: nodes})
+		return rows, nodes, nil
+	})
+
+	regionRows := make([]output.RegionRows, 0, len(results))
+	grouped := make([]output.RegionValue, 0, len(results))
+	for _, res := range results {
+		if res.Err != nil {
+			return res.Err
+		}
+		regionRows = append(regionRows, output.RegionRows{Region: res.Region, Rows: res.Rows})
+		grouped = append(grouped, output.RegionValue{Region: res.Region, Value: res.Value})
 	}
 	return output.RenderRegions(cmd, nodeHeader, regionRows, grouped)
 }

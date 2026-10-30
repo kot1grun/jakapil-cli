@@ -12,6 +12,7 @@ import (
 
 	"jakapil-cli/cmd/mks/client"
 	"jakapil-cli/internal/output"
+	"jakapil-cli/internal/parallel"
 )
 
 // NewClusterCommand returns the "cluster" subcommand.
@@ -74,7 +75,7 @@ Examples:
 
 // newListCommand returns the "cluster list" subcommand.
 func newListCommand() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List all clusters",
 		Long:  "List all Kubernetes clusters in the current project.",
@@ -95,11 +96,15 @@ func newListCommand() *cobra.Command {
 			return render(cmd, clusters)
 		},
 	}
+	cmd.Flags().Bool(client.FlagAllRegions, false, "list clusters in every region the service advertises instead of --region")
+	return cmd
 }
 
 // runListAllRegions lists clusters in every region the service advertises and
 // renders the aggregated result with a query "Region" column (table) or grouped
-// by region (json/yaml), backed by the --all-regions flag.
+// by region (json/yaml), backed by the --all-regions flag. Regions are queried
+// in parallel with parallel.Regions, since the underlying calls are read-only
+// GETs.
 func runListAllRegions(cmd *cobra.Command) error {
 	regions, clients, err := client.NewClients(cmd)
 	if err != nil {
@@ -107,19 +112,26 @@ func runListAllRegions(cmd *cobra.Command) error {
 	}
 	ctx := context.Background()
 
-	regionRows := make([]output.RegionRows, 0, len(regions))
-	grouped := make([]output.RegionValue, 0, len(regions))
-	for _, region := range regions {
+	results := parallel.Regions(ctx, regions, func(ctx context.Context, region string) ([][]string, interface{}, error) {
 		clusters, _, err := mkscluster.List(ctx, clients[region])
 		if err != nil {
-			return fmt.Errorf("region %s: %w", region, err)
+			return nil, nil, fmt.Errorf("region %s: %w", region, err)
 		}
 		rows := make([][]string, 0, len(clusters))
 		for _, cl := range clusters {
 			rows = append(rows, clusterListViewRow(cl))
 		}
-		regionRows = append(regionRows, output.RegionRows{Region: region, Rows: rows})
-		grouped = append(grouped, output.RegionValue{Region: region, Value: clusters})
+		return rows, clusters, nil
+	})
+
+	regionRows := make([]output.RegionRows, 0, len(results))
+	grouped := make([]output.RegionValue, 0, len(results))
+	for _, res := range results {
+		if res.Err != nil {
+			return res.Err
+		}
+		regionRows = append(regionRows, output.RegionRows{Region: res.Region, Rows: res.Rows})
+		grouped = append(grouped, output.RegionValue{Region: res.Region, Value: res.Value})
 	}
 	return output.RenderRegions(cmd, clusterHeader, regionRows, grouped)
 }

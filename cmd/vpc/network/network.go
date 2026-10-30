@@ -53,6 +53,7 @@ func newListCommand() *cobra.Command {
 	cmd.Flags().String("status", "", "filter networks by status (ACTIVE, DOWN, BUILD, ERROR)")
 	cmd.Flags().String("id", "", "filter networks by ID")
 	cmd.Flags().Int("limit", 0, "maximum number of networks to return")
+	cmd.Flags().Bool(client.FlagAllRegions, false, "list networks in every region the service advertises instead of --region")
 	return cmd
 }
 

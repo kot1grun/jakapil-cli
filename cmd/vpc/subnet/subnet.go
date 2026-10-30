@@ -55,6 +55,7 @@ func newListCommand() *cobra.Command {
 	cmd.Flags().String("id", "", "filter subnets by ID")
 	cmd.Flags().Int("ip-version", 0, "filter subnets by IP version (4 or 6)")
 	cmd.Flags().Int("limit", 0, "maximum number of subnets to return")
+	cmd.Flags().Bool(client.FlagAllRegions, false, "list subnets in every region the service advertises instead of --region")
 	return cmd
 }
 

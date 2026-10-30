@@ -14,6 +14,7 @@ import (
 
 	"jakapil-cli/cmd/vpc/client"
 	"jakapil-cli/internal/output"
+	"jakapil-cli/internal/parallel"
 )
 
 // runList lists ports, applying the --name, --network-id, --status,
@@ -29,7 +30,8 @@ func runList(cmd *cobra.Command, c *gophercloud.ServiceClient) error {
 
 // runListAllRegions lists ports in every region the service advertises and
 // renders the aggregated result with a Region column (table) or grouped by
-// region (json/yaml), backed by the --all-regions flag.
+// region (json/yaml), backed by the --all-regions flag. Regions are queried in
+// parallel with parallel.Regions, since the underlying calls are read-only GETs.
 func runListAllRegions(cmd *cobra.Command) error {
 	regions, clients, err := client.NewNetworkServiceClients(cmd)
 	if err != nil {
@@ -37,19 +39,26 @@ func runListAllRegions(cmd *cobra.Command) error {
 	}
 	opts := portsListOpts(cmd)
 
-	regionRows := make([]output.RegionRows, 0, len(regions))
-	grouped := make([]output.RegionValue, 0, len(regions))
-	for _, region := range regions {
-		list, err := fetchPorts(cmd.Context(), clients[region], opts)
+	results := parallel.Regions(cmd.Context(), regions, func(ctx context.Context, region string) ([][]string, interface{}, error) {
+		list, err := fetchPorts(ctx, clients[region], opts)
 		if err != nil {
-			return fmt.Errorf("region %s: %w", region, err)
+			return nil, nil, fmt.Errorf("region %s: %w", region, err)
 		}
 		rows := make([][]string, 0, len(list))
 		for _, p := range list {
 			rows = append(rows, portRow(p))
 		}
-		regionRows = append(regionRows, output.RegionRows{Region: region, Rows: rows})
-		grouped = append(grouped, output.RegionValue{Region: region, Value: list})
+		return rows, list, nil
+	})
+
+	regionRows := make([]output.RegionRows, 0, len(results))
+	grouped := make([]output.RegionValue, 0, len(results))
+	for _, res := range results {
+		if res.Err != nil {
+			return res.Err
+		}
+		regionRows = append(regionRows, output.RegionRows{Region: res.Region, Rows: res.Rows})
+		grouped = append(grouped, output.RegionValue{Region: res.Region, Value: res.Value})
 	}
 	return output.RenderRegions(cmd, portHeader, regionRows, grouped)
 }
