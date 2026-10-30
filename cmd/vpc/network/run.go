@@ -11,8 +11,6 @@ import (
 	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/networks"
 	"github.com/gophercloud/gophercloud/v2/pagination"
 	"github.com/spf13/cobra"
-
-	"jakapil-cli/internal/output"
 )
 
 // runList lists networks, applying the --name, --status, --id and --limit
@@ -45,7 +43,7 @@ func runList(cmd *cobra.Command, c *gophercloud.ServiceClient) error {
 		return err
 	}
 
-	return output.Print(cmd, list)
+	return render(cmd, list)
 }
 
 // runShow renders a single network selected by its ID.
@@ -54,7 +52,7 @@ func runShow(cmd *cobra.Command, c *gophercloud.ServiceClient, args []string) er
 	if err != nil {
 		return err
 	}
-	return output.Print(cmd, network)
+	return render(cmd, network)
 }
 
 // runCreate builds the create options from the flags and renders the created
@@ -80,7 +78,7 @@ func runCreate(cmd *cobra.Command, c *gophercloud.ServiceClient) error {
 	if err != nil {
 		return err
 	}
-	return output.Print(cmd, network)
+	return render(cmd, network)
 }
 
 // runUpdate applies at least one update option and renders the updated network.
@@ -116,7 +114,7 @@ func runUpdate(cmd *cobra.Command, c *gophercloud.ServiceClient, args []string) 
 	if err != nil {
 		return err
 	}
-	return output.Print(cmd, network)
+	return render(cmd, network)
 }
 
 // runDelete removes a network by its ID and prints a confirmation line.

@@ -68,6 +68,28 @@ func TestRunList(t *testing.T) {
 	}
 }
 
+func TestRunListTable(t *testing.T) {
+	ts := testutil.Neutron(t, netResource)
+	cmd, out := testCommand(t)
+	if err := cmd.Flags().Set("output", "table"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runList(cmd, testutil.NewClient(ts)); err != nil {
+		t.Fatalf("runList: %v", err)
+	}
+	// The compact table shows only the header columns and the data rows, not
+	// the full JSON/YAML record.
+	for _, want := range []string{"ID", "Name", "Status", "Shared", "Project ID", "net-1", "nf", "ACTIVE"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("table output missing %q; got:\n%s", want, out.String())
+		}
+	}
+	if strings.Contains(out.String(), "admin_state_up") {
+		t.Fatalf("table output must not include long-form fields; got:\n%s", out.String())
+	}
+}
+
 func TestRunShow(t *testing.T) {
 	ts := testutil.Neutron(t, netResource)
 	cmd, out := testCommand(t)

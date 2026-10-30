@@ -11,8 +11,6 @@ import (
 	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/ports"
 	"github.com/gophercloud/gophercloud/v2/pagination"
 	"github.com/spf13/cobra"
-
-	"jakapil-cli/internal/output"
 )
 
 // runList lists ports, applying the --name, --network-id, --status,
@@ -55,7 +53,7 @@ func runList(cmd *cobra.Command, c *gophercloud.ServiceClient) error {
 		return err
 	}
 
-	return output.Print(cmd, list)
+	return render(cmd, list)
 }
 
 // runCreate builds the create options from the flags and renders the created
@@ -83,7 +81,7 @@ func runCreate(cmd *cobra.Command, c *gophercloud.ServiceClient) error {
 	if err != nil {
 		return err
 	}
-	return output.Print(cmd, port)
+	return render(cmd, port)
 }
 
 // runUpdate applies at least one update option and renders the updated port.
@@ -124,7 +122,7 @@ func runUpdate(cmd *cobra.Command, c *gophercloud.ServiceClient, args []string) 
 	if err != nil {
 		return err
 	}
-	return output.Print(cmd, port)
+	return render(cmd, port)
 }
 
 // runDelete removes a port by its ID and prints a confirmation line.

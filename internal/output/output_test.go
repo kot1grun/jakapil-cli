@@ -115,3 +115,43 @@ func TestPrintUnknownFormat(t *testing.T) {
 		t.Fatal("expected error for unknown output format")
 	}
 }
+
+func TestRenderTableAlignment(t *testing.T) {
+	got, err := RenderTable(
+		[]string{"ID", "Name", "Status"},
+		[][]string{
+			{"net-1", "nf", "ACTIVE"},
+			{"net-222", "a-longer-name", "DOWN"},
+		},
+	)
+	if err != nil {
+		t.Fatalf("RenderTable: %v", err)
+	}
+
+	// The table is a full grid: borders around every cell, a border between
+	// each column, and a row separator under the header.
+	want := "┌───────┬─────────────┬──────┐\n" +
+		"│ID     │Name         │Status│\n" +
+		"├───────┼─────────────┼──────┤\n" +
+		"│net-1  │nf           │ACTIVE│\n" +
+		"├───────┼─────────────┼──────┤\n" +
+		"│net-222│a-longer-name│DOWN  │\n" +
+		"└───────┴─────────────┴──────┘"
+	if got != want {
+		t.Fatalf("table output mismatch.\nwant:\n%s\ngot:\n%s", want, got)
+	}
+}
+
+func TestIsTable(t *testing.T) {
+	cmd := &cobra.Command{Use: "leaf"}
+	cmd.Flags().String("output", YAML, "")
+	if IsTable(cmd) {
+		t.Fatal("default format must not be table")
+	}
+	if err := cmd.Flags().Set("output", Table); err != nil {
+		t.Fatal(err)
+	}
+	if !IsTable(cmd) {
+		t.Fatal("expected IsTable to be true after --output table")
+	}
+}
