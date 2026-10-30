@@ -11,12 +11,51 @@ import (
 	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/ports"
 	"github.com/gophercloud/gophercloud/v2/pagination"
 	"github.com/spf13/cobra"
+
+	"jakapil-cli/cmd/vpc/client"
+	"jakapil-cli/internal/output"
 )
 
 // runList lists ports, applying the --name, --network-id, --status,
 // --mac-address, --device-id and --limit filters when set, and renders the
 // result through the --output flag.
 func runList(cmd *cobra.Command, c *gophercloud.ServiceClient) error {
+	list, err := fetchPorts(cmd.Context(), c, portsListOpts(cmd))
+	if err != nil {
+		return err
+	}
+	return render(cmd, list)
+}
+
+// runListAllRegions lists ports in every region the service advertises and
+// renders the aggregated result with a Region column (table) or grouped by
+// region (json/yaml), backed by the --all-regions flag.
+func runListAllRegions(cmd *cobra.Command) error {
+	regions, clients, err := client.NewNetworkServiceClients(cmd)
+	if err != nil {
+		return err
+	}
+	opts := portsListOpts(cmd)
+
+	regionRows := make([]output.RegionRows, 0, len(regions))
+	grouped := make([]output.RegionValue, 0, len(regions))
+	for _, region := range regions {
+		list, err := fetchPorts(cmd.Context(), clients[region], opts)
+		if err != nil {
+			return fmt.Errorf("region %s: %w", region, err)
+		}
+		rows := make([][]string, 0, len(list))
+		for _, p := range list {
+			rows = append(rows, portRow(p))
+		}
+		regionRows = append(regionRows, output.RegionRows{Region: region, Rows: rows})
+		grouped = append(grouped, output.RegionValue{Region: region, Value: list})
+	}
+	return output.RenderRegions(cmd, portHeader, regionRows, grouped)
+}
+
+// portsListOpts builds the ports list options from the list flags.
+func portsListOpts(cmd *cobra.Command) ports.ListOpts {
 	opts := ports.ListOpts{}
 	if v, _ := cmd.Flags().GetString("name"); v != "" {
 		opts.Name = v
@@ -39,10 +78,14 @@ func runList(cmd *cobra.Command, c *gophercloud.ServiceClient) error {
 	if v, _ := cmd.Flags().GetInt("limit"); v > 0 {
 		opts.Limit = v
 	}
+	return opts
+}
 
+// fetchPorts lists ports through the paginator and returns them flat.
+func fetchPorts(ctx context.Context, c *gophercloud.ServiceClient, opts ports.ListOpts) ([]ports.Port, error) {
 	var list []ports.Port
 	pager := ports.List(c, opts)
-	if err := pager.EachPage(cmd.Context(), func(_ context.Context, page pagination.Page) (bool, error) {
+	if err := pager.EachPage(ctx, func(_ context.Context, page pagination.Page) (bool, error) {
 		pagePorts, err := ports.ExtractPorts(page)
 		if err != nil {
 			return false, err
@@ -50,10 +93,9 @@ func runList(cmd *cobra.Command, c *gophercloud.ServiceClient) error {
 		list = append(list, pagePorts...)
 		return true, nil
 	}); err != nil {
-		return err
+		return nil, err
 	}
-
-	return render(cmd, list)
+	return list, nil
 }
 
 // runCreate builds the create options from the flags and renders the created

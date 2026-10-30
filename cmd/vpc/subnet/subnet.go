@@ -39,6 +39,9 @@ func newListCommand() *cobra.Command {
 		Short: "List VPC subnets",
 		Long:  `List the subnets in the project, optionally filtered by network, CIDR, name or ID.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if allRegions, _ := cmd.Flags().GetBool(client.FlagAllRegions); allRegions {
+				return runListAllRegions(cmd)
+			}
 			c, err := client.NewNetworkServiceClient(cmd)
 			if err != nil {
 				return err

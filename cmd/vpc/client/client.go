@@ -29,6 +29,10 @@ const (
 	// service discovery.
 	FlagRegion = "region"
 
+	// FlagAllRegions is the persistent flag name that selects every region the
+	// service advertises in the catalog instead of a single --region.
+	FlagAllRegions = "all-regions"
+
 	// FlagDebug is the persistent flag name that enables debug output of the
 	// discovered VPC/network endpoint.
 	FlagDebug = "debug"
@@ -48,6 +52,10 @@ const (
 	// DefaultEndpoint is the Selectel Keystone Identity v3 endpoint used when
 	// neither the flag nor the environment provides one.
 	DefaultEndpoint = "https://cloud.api.selcloud.ru/identity/v3"
+
+	// networkServiceType is the Gophercloud networking service type as it
+	// appears in the service catalog.
+	networkServiceType = "network"
 )
 
 // NewNetworkServiceClient builds a gophercloud networking v2 ServiceClient for
@@ -61,30 +69,9 @@ const (
 // from the "--auth-url" flag, otherwise from $OS_AUTH_URL or DefaultEndpoint;
 // the region from the "--region" flag, otherwise from $OS_REGION_NAME.
 func NewNetworkServiceClient(cmd *cobra.Command) (*gophercloud.ServiceClient, error) {
-	token, err := resolveToken(cmd)
+	token, identityEndpoint, debug, err := networkCredentials(cmd)
 	if err != nil {
 		return nil, err
-	}
-
-	identityEndpoint, err := cmd.Flags().GetString(FlagEndpoint)
-	// The flag carries a non-empty default value (DefaultEndpoint), yet it must
-	// only win over the environment when explicitly set by the user. Otherwise
-	// $OS_AUTH_URL would never be honored.
-	if identityEndpoint == "" || !cmd.Flags().Changed(FlagEndpoint) {
-		identityEndpoint = os.Getenv(EnvEndpoint)
-	}
-	if identityEndpoint == "" {
-		identityEndpoint = DefaultEndpoint
-	}
-
-	region, _ := cmd.Flags().GetString(FlagRegion)
-	if region == "" {
-		region = os.Getenv(EnvRegion)
-	}
-
-	var debug io.Writer
-	if debugOn, _ := cmd.Flags().GetBool(FlagDebug); debugOn {
-		debug = cmd.ErrOrStderr()
 	}
 
 	provider, err := keystone.Authenticate(keystone.Options{
@@ -97,9 +84,82 @@ func NewNetworkServiceClient(cmd *cobra.Command) (*gophercloud.ServiceClient, er
 	}
 
 	return openstack.NewNetworkV2(provider, gophercloud.EndpointOpts{
-		Region:       region,
+		Region:       resolveRegion(cmd),
 		Availability: gophercloud.AvailabilityPublic,
 	})
+}
+
+// NewNetworkServiceClients authenticates once and returns a networking v2
+// ServiceClient for every public region the "network" service advertises in the
+// catalog, together with that region list sorted by name. It backs the
+// "--all-regions" list commands.
+func NewNetworkServiceClients(cmd *cobra.Command) ([]string, map[string]*gophercloud.ServiceClient, error) {
+	token, identityEndpoint, debug, err := networkCredentials(cmd)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	provider, err := keystone.Authenticate(keystone.Options{
+		IdentityEndpoint: identityEndpoint,
+		Token:            token,
+		Debug:            debug,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	regions, err := keystone.RegionsFromProvider(provider, networkServiceType)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	clients := make(map[string]*gophercloud.ServiceClient, len(regions))
+	for _, region := range regions {
+		sc, err := openstack.NewNetworkV2(provider, gophercloud.EndpointOpts{
+			Region:       region,
+			Availability: gophercloud.AvailabilityPublic,
+		})
+		if err != nil {
+			return nil, nil, fmt.Errorf("build network client for region %q: %w", region, err)
+		}
+		clients[region] = sc
+	}
+	return regions, clients, nil
+}
+
+// networkCredentials resolves the token, identity endpoint and debug writer
+// shared by every VPC client builder.
+func networkCredentials(cmd *cobra.Command) (token, identityEndpoint string, debug io.Writer, err error) {
+	token, err = resolveToken(cmd)
+	if err != nil {
+		return "", "", nil, err
+	}
+
+	identityEndpoint, _ = cmd.Flags().GetString(FlagEndpoint)
+	// The flag carries a non-empty default value (DefaultEndpoint), yet it must
+	// only win over the environment when explicitly set by the user. Otherwise
+	// $OS_AUTH_URL would never be honored.
+	if identityEndpoint == "" || !cmd.Flags().Changed(FlagEndpoint) {
+		identityEndpoint = os.Getenv(EnvEndpoint)
+	}
+	if identityEndpoint == "" {
+		identityEndpoint = DefaultEndpoint
+	}
+
+	if debugOn, _ := cmd.Flags().GetBool(FlagDebug); debugOn {
+		debug = cmd.ErrOrStderr()
+	}
+	return token, identityEndpoint, debug, nil
+}
+
+// resolveRegion returns the target region from the "--region" flag, otherwise
+// from the $OS_REGION_NAME environment variable.
+func resolveRegion(cmd *cobra.Command) string {
+	region, _ := cmd.Flags().GetString(FlagRegion)
+	if region == "" {
+		region = os.Getenv(EnvRegion)
+	}
+	return region
 }
 
 // resolveToken returns the API token from the "--token" flag, falling back to

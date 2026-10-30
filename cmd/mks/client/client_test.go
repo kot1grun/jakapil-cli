@@ -126,6 +126,45 @@ func mksCommand() *cobra.Command {
 	return cmd
 }
 
+func TestNewClientsAllRegions(t *testing.T) {
+	// The shared fakeKeystone catalog lists public endpoints in ru-1 and ru-2
+	// (plus an admin endpoint, which must be ignored).
+	srv := fakeKeystone(t, mksCatalog())
+
+	cmd := mksCommand()
+	_ = cmd.Flags().Set(FlagEndpoint, srv.URL+"/v3")
+	_ = cmd.Flags().Set(FlagToken, "test-token")
+
+	regions, clients, err := NewClients(cmd)
+	if err != nil {
+		t.Fatalf("NewClients: %v", err)
+	}
+
+	wantRegions := []string{"ru-1", "ru-2"}
+	if len(regions) != len(wantRegions) {
+		t.Fatalf("regions = %v, want %v", regions, wantRegions)
+	}
+	for i, r := range wantRegions {
+		if regions[i] != r {
+			t.Fatalf("regions = %v, want %v", regions, wantRegions)
+		}
+	}
+
+	wantEndpoint := map[string]string{
+		"ru-1": "https://mks.ru-1.examle.net/v1",
+		"ru-2": "https://mks.ru-2.examle.net/v1",
+	}
+	for _, r := range regions {
+		cli, ok := clients[r]
+		if !ok {
+			t.Fatalf("no client for region %q", r)
+		}
+		if cli.Endpoint != wantEndpoint[r] {
+			t.Fatalf("endpoint for %q = %q, want %q", r, cli.Endpoint, wantEndpoint[r])
+		}
+	}
+}
+
 func TestNewClientUsesStoredTokenFile(t *testing.T) {
 	const fileToken = "file-token"
 	const envToken = "env-token"

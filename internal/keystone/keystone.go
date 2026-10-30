@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -82,26 +83,77 @@ func DiscoverEndpoint(o Options) (string, error) {
 		return "", err
 	}
 
-	serviceEndpoint, err := provider.EndpointLocator(gophercloud.EndpointOpts{
-		Type:         o.ServiceType,
-		Region:       o.Region,
-		Availability: gophercloud.AvailabilityPublic,
-	})
+	serviceEndpoint, err := ResolveEndpointFromProvider(provider, o.ServiceType, o.Region)
 	if err != nil {
-		return "", fmt.Errorf("endpoint for service type %q (region %q) not found in service catalog: %w",
-			o.ServiceType, o.Region, err)
+		return "", err
 	}
-
-	// gophercloud.NormalizeURL appends a trailing slash to endpoints, but the
-	// Selectel clients (mks-go, craas-go) either validate a version suffix or
-	// build URLs with plain concatenation; a trailing slash would break both.
-	serviceEndpoint = strings.TrimRight(serviceEndpoint, "/")
 
 	if o.Debug != nil {
 		printDebug(o.Debug, provider, o, serviceEndpoint)
 	}
 
 	return serviceEndpoint, nil
+}
+
+// ResolveEndpointFromProvider returns the public endpoint URL for a service
+// type and region from an already-authenticated provider, reusing the catalog
+// fetched during authentication so no second lookup is needed. The returned URL
+// has no trailing slash.
+func ResolveEndpointFromProvider(provider *gophercloud.ProviderClient, serviceType, region string) (string, error) {
+	serviceEndpoint, err := provider.EndpointLocator(gophercloud.EndpointOpts{
+		Type:         serviceType,
+		Region:       region,
+		Availability: gophercloud.AvailabilityPublic,
+	})
+	if err != nil {
+		return "", fmt.Errorf("endpoint for service type %q (region %q) not found in service catalog: %w",
+			serviceType, region, err)
+	}
+
+	return strings.TrimRight(serviceEndpoint, "/"), nil
+}
+
+// RegionsFromProvider returns the sorted, de-duplicated list of public regions
+// advertised for serviceType in the already-authenticated provider's catalog.
+// An empty region endpoint (non-regional services such as CRaaS) is ignored.
+func RegionsFromProvider(provider *gophercloud.ProviderClient, serviceType string) ([]string, error) {
+	catalog, err := extractCatalog(provider)
+	if err != nil {
+		return nil, err
+	}
+
+	seen := make(map[string]bool)
+	var regions []string
+	for _, entry := range catalog.Entries {
+		if entry.Type != serviceType {
+			continue
+		}
+		for _, ep := range entry.Endpoints {
+			if ep.Region == "" || ep.Interface != string(gophercloud.AvailabilityPublic) {
+				continue
+			}
+			if !seen[ep.Region] {
+				seen[ep.Region] = true
+				regions = append(regions, ep.Region)
+			}
+		}
+	}
+	if len(regions) == 0 {
+		return nil, fmt.Errorf("no public endpoints for service type %q found in service catalog", serviceType)
+	}
+	sort.Strings(regions)
+	return regions, nil
+}
+
+// DiscoverRegions authenticates against IdentityEndpoint with Token and returns
+// the sorted list of public regions advertised for o.ServiceType in the service
+// catalog. It is the counterpart of DiscoverEndpoint for the --all-regions mode.
+func DiscoverRegions(o Options) ([]string, error) {
+	provider, err := Authenticate(o)
+	if err != nil {
+		return nil, err
+	}
+	return RegionsFromProvider(provider, o.ServiceType)
 }
 
 // printDebug dumps the raw service catalog and the endpoints selected from it

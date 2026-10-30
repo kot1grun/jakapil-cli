@@ -11,11 +11,50 @@ import (
 	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/subnets"
 	"github.com/gophercloud/gophercloud/v2/pagination"
 	"github.com/spf13/cobra"
+
+	"jakapil-cli/cmd/vpc/client"
+	"jakapil-cli/internal/output"
 )
 
 // runList lists subnets, applying the --name, --network-id, --cidr, --id and
 // --limit filters when set, and renders the result through the --output flag.
 func runList(cmd *cobra.Command, c *gophercloud.ServiceClient) error {
+	list, err := fetchSubnets(cmd.Context(), c, subnetsListOpts(cmd))
+	if err != nil {
+		return err
+	}
+	return render(cmd, list)
+}
+
+// runListAllRegions lists subnets in every region the service advertises and
+// renders the aggregated result with a Region column (table) or grouped by
+// region (json/yaml), backed by the --all-regions flag.
+func runListAllRegions(cmd *cobra.Command) error {
+	regions, clients, err := client.NewNetworkServiceClients(cmd)
+	if err != nil {
+		return err
+	}
+	opts := subnetsListOpts(cmd)
+
+	regionRows := make([]output.RegionRows, 0, len(regions))
+	grouped := make([]output.RegionValue, 0, len(regions))
+	for _, region := range regions {
+		list, err := fetchSubnets(cmd.Context(), clients[region], opts)
+		if err != nil {
+			return fmt.Errorf("region %s: %w", region, err)
+		}
+		rows := make([][]string, 0, len(list))
+		for _, s := range list {
+			rows = append(rows, subnetRow(s))
+		}
+		regionRows = append(regionRows, output.RegionRows{Region: region, Rows: rows})
+		grouped = append(grouped, output.RegionValue{Region: region, Value: list})
+	}
+	return output.RenderRegions(cmd, subnetHeader, regionRows, grouped)
+}
+
+// subnetsListOpts builds the subnets list options from the list flags.
+func subnetsListOpts(cmd *cobra.Command) subnets.ListOpts {
 	opts := subnets.ListOpts{}
 	if v, _ := cmd.Flags().GetString("name"); v != "" {
 		opts.Name = v
@@ -35,10 +74,14 @@ func runList(cmd *cobra.Command, c *gophercloud.ServiceClient) error {
 	if v, _ := cmd.Flags().GetInt("limit"); v > 0 {
 		opts.Limit = v
 	}
+	return opts
+}
 
+// fetchSubnets lists subnets through the paginator and returns them flat.
+func fetchSubnets(ctx context.Context, c *gophercloud.ServiceClient, opts subnets.ListOpts) ([]subnets.Subnet, error) {
 	var list []subnets.Subnet
 	pager := subnets.List(c, opts)
-	if err := pager.EachPage(cmd.Context(), func(_ context.Context, page pagination.Page) (bool, error) {
+	if err := pager.EachPage(ctx, func(_ context.Context, page pagination.Page) (bool, error) {
 		pageSubnets, err := subnets.ExtractSubnets(page)
 		if err != nil {
 			return false, err
@@ -46,10 +89,9 @@ func runList(cmd *cobra.Command, c *gophercloud.ServiceClient) error {
 		list = append(list, pageSubnets...)
 		return true, nil
 	}); err != nil {
-		return err
+		return nil, err
 	}
-
-	return render(cmd, list)
+	return list, nil
 }
 
 // runShow renders a single subnet selected by its ID.

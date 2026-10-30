@@ -11,11 +11,50 @@ import (
 	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/networks"
 	"github.com/gophercloud/gophercloud/v2/pagination"
 	"github.com/spf13/cobra"
+
+	"jakapil-cli/cmd/vpc/client"
+	"jakapil-cli/internal/output"
 )
 
 // runList lists networks, applying the --name, --status, --id and --limit
 // filters when set, and renders the result through the --output flag.
 func runList(cmd *cobra.Command, c *gophercloud.ServiceClient) error {
+	list, err := fetchNetworks(cmd.Context(), c, networksListOpts(cmd))
+	if err != nil {
+		return err
+	}
+	return render(cmd, list)
+}
+
+// runListAllRegions lists networks in every region the service advertises and
+// renders the aggregated result with a Region column (table) or grouped by
+// region (json/yaml), backed by the --all-regions flag.
+func runListAllRegions(cmd *cobra.Command) error {
+	regions, clients, err := client.NewNetworkServiceClients(cmd)
+	if err != nil {
+		return err
+	}
+	opts := networksListOpts(cmd)
+
+	regionRows := make([]output.RegionRows, 0, len(regions))
+	grouped := make([]output.RegionValue, 0, len(regions))
+	for _, region := range regions {
+		list, err := fetchNetworks(cmd.Context(), clients[region], opts)
+		if err != nil {
+			return fmt.Errorf("region %s: %w", region, err)
+		}
+		rows := make([][]string, 0, len(list))
+		for _, n := range list {
+			rows = append(rows, networkRow(n))
+		}
+		regionRows = append(regionRows, output.RegionRows{Region: region, Rows: rows})
+		grouped = append(grouped, output.RegionValue{Region: region, Value: list})
+	}
+	return output.RenderRegions(cmd, networkHeader, regionRows, grouped)
+}
+
+// networksListOpts builds the networks list options from the list flags.
+func networksListOpts(cmd *cobra.Command) networks.ListOpts {
 	opts := networks.ListOpts{}
 	if v, _ := cmd.Flags().GetString("name"); v != "" {
 		opts.Name = v
@@ -29,10 +68,14 @@ func runList(cmd *cobra.Command, c *gophercloud.ServiceClient) error {
 	if v, _ := cmd.Flags().GetInt("limit"); v > 0 {
 		opts.Limit = v
 	}
+	return opts
+}
 
+// fetchNetworks lists networks through the paginator and returns them flat.
+func fetchNetworks(ctx context.Context, c *gophercloud.ServiceClient, opts networks.ListOpts) ([]networks.Network, error) {
 	var list []networks.Network
 	pager := networks.List(c, opts)
-	if err := pager.EachPage(cmd.Context(), func(_ context.Context, page pagination.Page) (bool, error) {
+	if err := pager.EachPage(ctx, func(_ context.Context, page pagination.Page) (bool, error) {
 		pageNetworks, err := networks.ExtractNetworks(page)
 		if err != nil {
 			return false, err
@@ -40,10 +83,9 @@ func runList(cmd *cobra.Command, c *gophercloud.ServiceClient) error {
 		list = append(list, pageNetworks...)
 		return true, nil
 	}); err != nil {
-		return err
+		return nil, err
 	}
-
-	return render(cmd, list)
+	return list, nil
 }
 
 // runShow renders a single network selected by its ID.

@@ -30,6 +30,7 @@ Kubernetes versions and options.`,
 	cmd.PersistentFlags().StringP(client.FlagToken, "t", "", "Selectel Keystone API token (default $SLT_KS_TOKEN)")
 	cmd.PersistentFlags().StringP(client.FlagEndpoint, "e", client.DefaultEndpoint, "Selectel Keystone Identity v3 auth URL for authentication and service discovery (default $OS_AUTH_URL)")
 	cmd.PersistentFlags().String(client.FlagRegion, "", "target region for MKS endpoint discovery, e.g. ru-1 (default $OS_REGION_NAME)")
+	cmd.PersistentFlags().Bool(client.FlagAllRegions, false, "query every region the service advertises in the catalog instead of --region")
 	cmd.PersistentFlags().Bool(client.FlagDebug, false, "print the discovered service catalog and MKS endpoints to stderr")
 	cmd.PersistentFlags().StringP("output", "o", output.YAML, "output format: json, yaml or table")
 

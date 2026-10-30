@@ -37,6 +37,9 @@ func newListCommand() *cobra.Command {
 		Short: "List VPC ports",
 		Long:  `List the ports in the project, optionally filtered by network, status, name, MAC address or ID.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if allRegions, _ := cmd.Flags().GetBool(client.FlagAllRegions); allRegions {
+				return runListAllRegions(cmd)
+			}
 			c, err := client.NewNetworkServiceClient(cmd)
 			if err != nil {
 				return err
