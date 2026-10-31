@@ -47,8 +47,14 @@ existing go libraries from Selectel.`,
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
-	err := rootCmd.Execute()
+	// Silent-error mode: cobra did not print anything, we own the report.
+	c, err := rootCmd.ExecuteC()
 	if err != nil {
+		msg, showUsage := handleError(c, err)
+		fmt.Fprintln(os.Stderr, colorize(msg))
+		if showUsage {
+			fmt.Fprintln(os.Stderr, c.UsageString())
+		}
 		os.Exit(1)
 	}
 }
@@ -80,6 +86,12 @@ func init() {
 
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $XDG_CONFIG_HOME/jakapil-cli.yaml, or ~/.config/jakapil-cli.yaml)")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "print informational messages to stderr (e.g. the loaded config file)")
+
+	// Error reporting is handled by Execute() so that 4xx/5xx API failures print
+	// only the message (no usage dump); without Silence* cobra would print both
+	// the error and the usage block unconditionally.
+	rootCmd.SilenceUsage = true
+	rootCmd.SilenceErrors = true
 
 	// Cobra also supports local flags, which will only run
 	// when this action is called directly.
