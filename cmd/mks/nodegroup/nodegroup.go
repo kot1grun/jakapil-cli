@@ -108,7 +108,8 @@ func newListCommand() *cobra.Command {
 // advertises and renders the aggregated result with a "Region" column (table)
 // or grouped by region (json/yaml), backed by the --all-regions flag. Regions
 // are queried in parallel with parallel.Regions, since the underlying calls are
-// read-only GETs.
+// read-only GETs. A region whose endpoint is unavailable is skipped with a
+// warning on stderr; the remaining regions are still rendered.
 func runListAllRegions(cmd *cobra.Command, clusterID string) error {
 	regions, clients, err := client.NewClients(cmd)
 	if err != nil {
@@ -119,7 +120,7 @@ func runListAllRegions(cmd *cobra.Command, clusterID string) error {
 	results := parallel.Regions(ctx, regions, func(ctx context.Context, region string) ([][]string, interface{}, error) {
 		groups, _, err := mksnodegroup.List(ctx, clients[region], clusterID)
 		if err != nil {
-			return nil, nil, fmt.Errorf("region %s: %w", region, err)
+			return nil, nil, err
 		}
 		rows := make([][]string, 0, len(groups))
 		for _, ng := range groups {
@@ -128,14 +129,5 @@ func runListAllRegions(cmd *cobra.Command, clusterID string) error {
 		return rows, groups, nil
 	})
 
-	regionRows := make([]output.RegionRows, 0, len(results))
-	grouped := make([]output.RegionValue, 0, len(results))
-	for _, res := range results {
-		if res.Err != nil {
-			return res.Err
-		}
-		regionRows = append(regionRows, output.RegionRows{Region: res.Region, Rows: res.Rows})
-		grouped = append(grouped, output.RegionValue{Region: res.Region, Value: res.Value})
-	}
-	return output.RenderRegions(cmd, nodegroupHeader, regionRows, grouped)
+	return output.RenderRegionsBestEffort(cmd, nodegroupHeader, results)
 }

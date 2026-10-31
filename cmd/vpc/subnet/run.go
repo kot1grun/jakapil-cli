@@ -31,6 +31,8 @@ func runList(cmd *cobra.Command, c *gophercloud.ServiceClient) error {
 // renders the aggregated result with a Region column (table) or grouped by
 // region (json/yaml), backed by the --all-regions flag. Regions are queried in
 // parallel with parallel.Regions, since the underlying calls are read-only GETs.
+// A region whose endpoint is unavailable is skipped with a warning on stderr;
+// the remaining regions are still rendered.
 func runListAllRegions(cmd *cobra.Command) error {
 	regions, clients, err := client.NewNetworkServiceClients(cmd)
 	if err != nil {
@@ -41,7 +43,7 @@ func runListAllRegions(cmd *cobra.Command) error {
 	results := parallel.Regions(cmd.Context(), regions, func(ctx context.Context, region string) ([][]string, interface{}, error) {
 		list, err := fetchSubnets(ctx, clients[region], opts)
 		if err != nil {
-			return nil, nil, fmt.Errorf("region %s: %w", region, err)
+			return nil, nil, err
 		}
 		rows := make([][]string, 0, len(list))
 		for _, s := range list {
@@ -50,16 +52,7 @@ func runListAllRegions(cmd *cobra.Command) error {
 		return rows, list, nil
 	})
 
-	regionRows := make([]output.RegionRows, 0, len(results))
-	grouped := make([]output.RegionValue, 0, len(results))
-	for _, res := range results {
-		if res.Err != nil {
-			return res.Err
-		}
-		regionRows = append(regionRows, output.RegionRows{Region: res.Region, Rows: res.Rows})
-		grouped = append(grouped, output.RegionValue{Region: res.Region, Value: res.Value})
-	}
-	return output.RenderRegions(cmd, subnetHeader, regionRows, grouped)
+	return output.RenderRegionsBestEffort(cmd, subnetHeader, results)
 }
 
 // subnetsListOpts builds the subnets list options from the list flags.

@@ -19,15 +19,14 @@ type Result struct {
 
 // Regions runs fn for each region concurrently and returns one Result per
 // region, in the same order as the input slice. It is meant for idempotent
-// GET-style calls: the shared context is cancelled as soon as the first region
-// reports an error, so sibling fetches can abort early instead of busy-waiting.
+// GET-style calls. A failure in one region does not affect the others: every
+// region is still queried and its outcome is reported in its own Result, so
+// callers can produce best-effort output and warn about individual failures.
 //
 // The returned slice is fully populated before Regions returns; callers read it
 // after the (single) WaitGroup wait, so there are no concurrent reads.
 func Regions(ctx context.Context, regions []string, fn func(ctx context.Context, region string) ([][]string, interface{}, error)) []Result {
 	results := make([]Result, len(regions))
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
 
 	var wg sync.WaitGroup
 	for i, region := range regions {
@@ -37,11 +36,7 @@ func Regions(ctx context.Context, regions []string, fn func(ctx context.Context,
 			// Each goroutine writes to its own slice element, so there is no
 			// data race between them.
 			results[i].Region = region
-			rows, value, err := fn(ctx, region)
-			results[i].Rows, results[i].Value, results[i].Err = rows, value, err
-			if err != nil {
-				cancel()
-			}
+			results[i].Rows, results[i].Value, results[i].Err = fn(ctx, region)
 		}(i, region)
 	}
 

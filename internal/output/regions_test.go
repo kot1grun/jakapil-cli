@@ -1,11 +1,18 @@
 package output
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
+
+	"jakapil-cli/internal/parallel"
 )
+
+// errUnavailable is a sentinel used to simulate a region whose endpoint cannot
+// be queried in RenderRegionsBestEffort tests.
+var errUnavailable = errors.New("endpoint unavailable")
 
 // TestRenderRegions proves that --all-regions output prepends a Region column
 // for the table format and switches to grouped long-form output otherwise.
@@ -64,4 +71,52 @@ func TestRenderRegions(t *testing.T) {
 			t.Fatalf("json output missing region grouping, got:\n%s", out)
 		}
 	})
+}
+
+// TestRenderRegionsBestEffort verifies that a failed region is skipped with a
+// warning on stderr, the healthy regions are still rendered, and the command
+// reports an error naming the failed region so it exits non-zero.
+func TestRenderRegionsBestEffort(t *testing.T) {
+	header := []string{"ID"}
+	results := []parallel.Result{
+		{Region: "ru-1", Rows: [][]string{{"a"}}, Value: "a"},
+		{Region: "ru-8", Err: errUnavailable},
+		{Region: "ru-3", Rows: [][]string{{"c"}}, Value: "c"},
+	}
+
+	cmd := &cobra.Command{Use: "leaf"}
+	cmd.Flags().StringP("output", "o", Table, "")
+	cmd.SetOut(&strings.Builder{})
+	cmd.SetErr(&strings.Builder{})
+
+	err := RenderRegionsBestEffort(cmd, header, results)
+	if err == nil {
+		t.Fatal("expected an error naming the unavailable region, got nil")
+	}
+	if !strings.Contains(err.Error(), "ru-8") {
+		t.Fatalf("error %q should name ru-8", err)
+	}
+
+	// The healthy regions ru-1 and ru-3 must still appear in the table, while
+	// the failed ru-8 is excluded from the data.
+	out := cmd.OutOrStdout().(*strings.Builder).String()
+	if !strings.Contains(out, "ru-1") || !strings.Contains(out, "ru-3") {
+		t.Fatalf("expected healthy regions in output, got:\n%s", out)
+	}
+	// ru-1 and ru-3 each carry exactly one data row besides their header cell.
+	if got := strings.Count(out, "ru-1"); got != 1 {
+		t.Fatalf("ru-1 appears %d times, want 1; got:\n%s", got, out)
+	}
+	if got := strings.Count(out, "ru-3"); got != 1 {
+		t.Fatalf("ru-3 appears %d times, want 1; got:\n%s", got, out)
+	}
+
+	// ru-8 should only surface in the stderr warning, not in the table.
+	warn := cmd.ErrOrStderr().(*strings.Builder).String()
+	if !strings.Contains(warn, "ru-8") {
+		t.Fatalf("expected a warning about ru-8 on stderr, got:\n%q", warn)
+	}
+	if strings.Contains(out, "ru-8") {
+		t.Fatalf("failed region ru-8 leaked into the table output:\n%s", out)
+	}
 }

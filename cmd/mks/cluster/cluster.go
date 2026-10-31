@@ -5,7 +5,6 @@ package cluster
 
 import (
 	"context"
-	"fmt"
 
 	mkscluster "github.com/selectel/mks-go/pkg/v1/cluster"
 	"github.com/spf13/cobra"
@@ -104,7 +103,8 @@ func newListCommand() *cobra.Command {
 // renders the aggregated result with a query "Region" column (table) or grouped
 // by region (json/yaml), backed by the --all-regions flag. Regions are queried
 // in parallel with parallel.Regions, since the underlying calls are read-only
-// GETs.
+// GETs. A region whose endpoint is unavailable is skipped with a warning on
+// stderr; the remaining regions are still rendered.
 func runListAllRegions(cmd *cobra.Command) error {
 	regions, clients, err := client.NewClients(cmd)
 	if err != nil {
@@ -115,7 +115,7 @@ func runListAllRegions(cmd *cobra.Command) error {
 	results := parallel.Regions(ctx, regions, func(ctx context.Context, region string) ([][]string, interface{}, error) {
 		clusters, _, err := mkscluster.List(ctx, clients[region])
 		if err != nil {
-			return nil, nil, fmt.Errorf("region %s: %w", region, err)
+			return nil, nil, err
 		}
 		rows := make([][]string, 0, len(clusters))
 		for _, cl := range clusters {
@@ -124,14 +124,5 @@ func runListAllRegions(cmd *cobra.Command) error {
 		return rows, clusters, nil
 	})
 
-	regionRows := make([]output.RegionRows, 0, len(results))
-	grouped := make([]output.RegionValue, 0, len(results))
-	for _, res := range results {
-		if res.Err != nil {
-			return res.Err
-		}
-		regionRows = append(regionRows, output.RegionRows{Region: res.Region, Rows: res.Rows})
-		grouped = append(grouped, output.RegionValue{Region: res.Region, Value: res.Value})
-	}
-	return output.RenderRegions(cmd, clusterHeader, regionRows, grouped)
+	return output.RenderRegionsBestEffort(cmd, clusterHeader, results)
 }

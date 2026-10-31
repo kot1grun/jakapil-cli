@@ -3,7 +3,6 @@ package parallel
 import (
 	"context"
 	"errors"
-	"reflect"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -16,13 +15,45 @@ func TestRegionsPreservesOrderAndCollects(t *testing.T) {
 		return [][]string{{region}}, region, nil
 	})
 
-	want := []Result{
-		{Region: "a", Rows: [][]string{{"a"}}, Value: "a"},
-		{Region: "b", Rows: [][]string{{"b"}}, Value: "b"},
-		{Region: "c", Rows: [][]string{{"c"}}, Value: "c"},
+	want := []struct {
+		region string
+		rows   [][]string
+		value  string
+	}{
+		{region: "a", rows: [][]string{{"a"}}, value: "a"},
+		{region: "b", rows: [][]string{{"b"}}, value: "b"},
+		{region: "c", rows: [][]string{{"c"}}, value: "c"},
 	}
-	if !reflect.DeepEqual(results, want) {
-		t.Fatalf("unexpected results:\n got: %+v\nwant: %+v", results, want)
+
+	if len(results) != len(want) {
+		t.Fatalf("expected %d results, got %d", len(want), len(results))
+	}
+	for i, r := range results {
+		w := want[i]
+		if r.Region != w.region {
+			t.Errorf("results[%d].Region = %q, want %q", i, r.Region, w.region)
+		}
+		if r.Err != nil {
+			t.Errorf("results[%d].Err = %v, want nil", i, r.Err)
+		}
+		if len(r.Rows) != len(w.rows) {
+			t.Errorf("results[%d].Rows length = %d, want %d", i, len(r.Rows), len(w.rows))
+			continue
+		}
+		for j := range w.rows {
+			if len(r.Rows[j]) != len(w.rows[j]) {
+				t.Errorf("results[%d].Rows[%d] length = %d, want %d", i, j, len(r.Rows[j]), len(w.rows[j]))
+				continue
+			}
+			for k := range w.rows[j] {
+				if r.Rows[j][k] != w.rows[j][k] {
+					t.Errorf("results[%d].Rows[%d][%d] = %q, want %q", i, j, k, r.Rows[j][k], w.rows[j][k])
+				}
+			}
+		}
+		if got, ok := r.Value.(string); !ok || got != w.value {
+			t.Errorf("results[%d].Value = %#v, want %q", i, r.Value, w.value)
+		}
 	}
 }
 
@@ -55,15 +86,15 @@ func TestRegionsRunsConcurrently(t *testing.T) {
 	wg.Wait()
 }
 
-func TestRegionsCancelsSiblingsOnFirstError(t *testing.T) {
-	// The shared ctx is cancelled when the first region fails; siblings waiting
-	// on ctx.Done() must observe context.Canceled.
-	fn := func(ctx context.Context, region string) ([][]string, interface{}, error) {
+func TestRegionsBestEffortStillQueriesSucceededRegions(t *testing.T) {
+	// A failure in one region must not prevent the others from being queried:
+	// best-effort fans out to every region and reports each outcome in its own
+	// Result.
+	fn := func(_ context.Context, region string) ([][]string, interface{}, error) {
 		if region == "a" {
 			return nil, nil, errors.New("boom")
 		}
-		<-ctx.Done()
-		return nil, nil, ctx.Err()
+		return [][]string{{region + "-row"}}, region, nil
 	}
 
 	results := Regions(context.Background(), []string{"a", "b", "c"}, fn)
@@ -71,13 +102,19 @@ func TestRegionsCancelsSiblingsOnFirstError(t *testing.T) {
 	if got := results[0].Err; got == nil || got.Error() != "boom" {
 		t.Fatalf("expected region a to report boom, got: %v", got)
 	}
-	// Siblings (b, c) may or may not have observed the cancellation before the
-	// wait returns, but they must never report nil if they did read ctx.Err().
-	// At minimum the dedup of errors in the command layer only inspects the
-	// first error, so here we only assert the shape is consistent.
-	for _, r := range results[1:] {
-		if r.Err == nil {
-			t.Fatalf("region %s: expected a cancellation error, got nil", r.Region)
+	if len(results[0].Rows) != 0 {
+		t.Fatalf("region a: expected no rows on error, got %v", results[0].Rows)
+	}
+
+	for _, idx := range []int{1, 2} {
+		if results[idx].Err != nil {
+			t.Fatalf("region %s: unexpected error %v", results[idx].Region, results[idx].Err)
+		}
+		if len(results[idx].Rows) != 1 || results[idx].Rows[0][0] != results[idx].Region+"-row" {
+			t.Fatalf("region %s: unexpected rows %v", results[idx].Region, results[idx].Rows)
+		}
+		if v, ok := results[idx].Value.(string); !ok || v != results[idx].Region {
+			t.Fatalf("region %s: unexpected value %#v", results[idx].Region, results[idx].Value)
 		}
 	}
 }

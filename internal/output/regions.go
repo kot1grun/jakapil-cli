@@ -1,6 +1,14 @@
 package output
 
-import "github.com/spf13/cobra"
+import (
+	"fmt"
+	"sort"
+	"strings"
+
+	"github.com/spf13/cobra"
+
+	"jakapil-cli/internal/parallel"
+)
 
 // RegionValue pairs a region with the value returned by listing that region. It
 // is what "--all-regions" renders for the long-form (json/yaml) formats, so the
@@ -36,4 +44,36 @@ func RenderRegions(cmd *cobra.Command, header []string, regionRows []RegionRows,
 		return PrintTable(cmd, append([]string{"Region"}, header...), rows)
 	}
 	return Print(cmd, grouped)
+}
+
+// RenderRegionsBestEffort renders the aggregated "--all-regions" result produced
+// by parallel.Regions for every region that succeeded. For each region that
+// failed to be queried it prints a warning to stderr and excludes it from the
+// output; if at least one region failed, it returns an error naming them so the
+// command still exits non-zero while the data for the healthy regions is kept.
+//
+// The returned error is only about missing regions: a render failure is
+// returned as-is and takes precedence.
+func RenderRegionsBestEffort(cmd *cobra.Command, header []string, results []parallel.Result) error {
+	regionRows := make([]RegionRows, 0, len(results))
+	grouped := make([]RegionValue, 0, len(results))
+	var failed []string
+	for _, res := range results {
+		if res.Err != nil {
+			failed = append(failed, res.Region)
+			fmt.Fprintf(cmd.ErrOrStderr(), "warning: region %s unavailable: %v\n", res.Region, res.Err)
+			continue
+		}
+		regionRows = append(regionRows, RegionRows{Region: res.Region, Rows: res.Rows})
+		grouped = append(grouped, RegionValue{Region: res.Region, Value: res.Value})
+	}
+
+	if err := RenderRegions(cmd, header, regionRows, grouped); err != nil {
+		return err
+	}
+	if len(failed) > 0 {
+		sort.Strings(failed)
+		return fmt.Errorf("could not query the following region(s): %s", strings.Join(failed, ", "))
+	}
+	return nil
 }
