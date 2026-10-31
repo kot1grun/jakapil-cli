@@ -373,8 +373,8 @@ func TestAuthenticateTokenList(t *testing.T) {
 	}
 
 	for _, want := range []string{
-		"Tokens in " + tokenFile,
-		"SCOPE", "project", "account",
+		"Scope", "Issued At", "Expires At", "Status",
+		"project", "account",
 		issued.Format(time.RFC3339), expires.Format(time.RFC3339),
 		"valid",
 	} {
@@ -383,11 +383,42 @@ func TestAuthenticateTokenList(t *testing.T) {
 		}
 	}
 
+	// The list must render the unified bordered table, not a custom format.
+	if !strings.Contains(out, "╔") || !strings.Contains(out, "║") {
+		t.Fatalf("expected the unified bordered table, got:\n%s", out)
+	}
+
 	// The token values are secrets and must never be printed.
 	for _, secret := range []string{"project-token", "account-token"} {
 		if strings.Contains(out, secret) {
 			t.Fatalf("output leaked secret %q; got:\n%s", secret, out)
 		}
+	}
+}
+
+// TestAuthenticateTokenListJSON proves the long-form json output is a safe,
+// redacted projection: it carries the listing columns but never the token value.
+func TestAuthenticateTokenListJSON(t *testing.T) {
+	tokenFile := filepath.Join(t.TempDir(), "token")
+	issued := time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC)
+	expires := issued.Add(time.Hour)
+	if err := authentication.SaveTokens(tokenFile, []authentication.StoredToken{
+		{Token: "project-token", Scope: authentication.ScopeProject, IssuedAt: issued, ExpiresAt: expires},
+	}); err != nil {
+		t.Fatalf("seed token file: %v", err)
+	}
+
+	out, _, err := runListCommand(t, "--token-file", tokenFile, "-o", "json")
+	if err != nil {
+		t.Fatalf("authenticate token list -o json: %v", err)
+	}
+	for _, want := range []string{`"scope": "project"`, `"status": "valid"`} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("json output missing %q; got:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "project-token") || strings.Contains(out, "escaped project-token") {
+		t.Fatalf("json output must never leak the token secret; got:\n%s", out)
 	}
 }
 

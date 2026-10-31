@@ -17,6 +17,7 @@ import (
 	"golang.org/x/term"
 
 	"jakapil-cli/internal/authentication"
+	"jakapil-cli/internal/output"
 )
 
 const (
@@ -84,6 +85,13 @@ file (OS_AUTH_URL, OS_USERNAME, OS_PASSWORD, ...) or from a clouds.yaml file
 selected with --cloud. Run "authenticate token issue" to issue and store the
 token(s), printing them to stdout for use in scripts and openrc files.`,
 	}
+
+	// The persistent --output flag matches the other command groups (vpc/mks/
+	// craas): "authenticate token list" renders the unified tabular output by
+	// default, with json/yaml available through the flag. The token "issue"
+	// command prints raw token values for scripting and ignores it.
+	cmd.PersistentFlags().StringP("output", "o", output.Table, "output format: table, json or yaml")
+
 	cmd.AddCommand(newTokenCommand())
 	return cmd
 }
@@ -242,9 +250,25 @@ value itself is masked because it is a secret.`,
 	return cmd
 }
 
+// tokenHeader are the column names of the unified tabular output used by
+// "authenticate token list".
+var tokenHeader = []string{"Scope", "Issued At", "Expires At", "Status"}
+
+// tokenView is the json/yaml-safe projection of a stored token. It mirrors the
+// tabular columns (scope, issue/expiry timestamps, usability) but never carries
+// the token value itself: that is a secret, so it is not rendered in any format.
+type tokenView struct {
+	Scope     string `json:"scope"`
+	IssuedAt  string `json:"issued_at"`
+	ExpiresAt string `json:"expires_at"`
+	Status    string `json:"status"`
+}
+
 // runList implements the "authenticate token list" command. A missing token
 // file or a file with no tokens yields a friendly "none" line instead of an
-// error, so listing works before any token has been issued.
+// error, so listing works before any token has been issued. Otherwise the
+// records are rendered through the unified output plumbing: a bordered table by
+// default, or the redacted per-token projection for json/yaml.
 func runList(cmd *cobra.Command) error {
 	tokenFile, _ := cmd.Flags().GetString(FlagTokenFile)
 	tokenFile = authentication.ExpandHome(tokenFile)
@@ -254,26 +278,42 @@ func runList(cmd *cobra.Command) error {
 		return fmt.Errorf("failed to read token file %s: %w", tokenFile, err)
 	}
 
-	w := cmd.OutOrStdout()
-	fmt.Fprintf(w, "Tokens in %s:\n\n", tokenFile)
-
 	if len(records) == 0 {
+		w := cmd.OutOrStdout()
+		fmt.Fprintf(w, "Tokens in %s:\n\n", tokenFile)
 		fmt.Fprintln(w, "  none: run \"jakapil-cli authenticate token issue\" to issue and store a token")
 		return nil
 	}
 
-	fmt.Fprintf(w, "  %-10s  %-26s  %-26s  %s\n", "SCOPE", "ISSUED AT", "EXPIRES AT", "STATUS")
 	now := time.Now()
-	for _, r := range records {
-		fmt.Fprintf(w, "  %-10s  %-26s  %-26s  %s\n",
-			scopeLabel(r.Scope),
-			formatTokenTime(r.IssuedAt),
-			formatTokenTime(r.ExpiresAt),
-			tokenStatus(r, now),
-		)
+	if output.IsTable(cmd) {
+		rows := output.RowsOfValues(records, func(r authentication.StoredToken) []string {
+			return tokenRow(r, now)
+		})
+		return output.PrintTable(cmd, tokenHeader, rows)
 	}
 
-	return nil
+	views := make([]tokenView, 0, len(records))
+	for _, r := range records {
+		views = append(views, tokenView{
+			Scope:     scopeLabel(r.Scope),
+			IssuedAt:  formatTokenTime(r.IssuedAt),
+			ExpiresAt: formatTokenTime(r.ExpiresAt),
+			Status:    tokenStatus(r, now),
+		})
+	}
+	return output.Print(cmd, views)
+}
+
+// tokenRow builds one table row for a stored token. Token values are never
+// shown: they are secrets.
+func tokenRow(r authentication.StoredToken, now time.Time) []string {
+	return []string{
+		scopeLabel(r.Scope),
+		formatTokenTime(r.IssuedAt),
+		formatTokenTime(r.ExpiresAt),
+		tokenStatus(r, now),
+	}
 }
 
 // scopeLabel maps a stored token scope to the human-readable label used in the
