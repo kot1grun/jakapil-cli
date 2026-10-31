@@ -43,7 +43,7 @@ func TestRenderRegions(t *testing.T) {
 			t.Fatalf("RenderRegions(table): %v", err)
 		}
 		out := cmd.OutOrStdout().(*strings.Builder).String()
-		if !strings.Contains(out, "│Region") {
+		if !strings.Contains(out, "║Region") {
 			t.Fatalf("expected a Region column, got:\n%s", out)
 		}
 		// ru-1 feeds 1 row, ru-2 feeds 2 rows — each must carry its region cell.
@@ -64,7 +64,7 @@ func TestRenderRegions(t *testing.T) {
 			t.Fatalf("RenderRegions(json): %v", err)
 		}
 		out := cmd.OutOrStdout().(*strings.Builder).String()
-		if strings.Contains(out, "│") {
+		if strings.Contains(out, "║") {
 			t.Fatalf("json output must not render a bordered table, got:\n%s", out)
 		}
 		if !strings.Contains(out, "\"region\": \"ru-1\"") || !strings.Contains(out, "\"region\": \"ru-2\"") {

@@ -129,14 +129,15 @@ func TestRenderTableAlignment(t *testing.T) {
 	}
 
 	// The table is a full grid: borders around every cell, a border between
-	// each column, and a row separator under the header.
-	want := "┌───────┬─────────────┬──────┐\n" +
-		"│ID     │Name         │Status│\n" +
-		"├───────┼─────────────┼──────┤\n" +
-		"│net-1  │nf           │ACTIVE│\n" +
-		"├───────┼─────────────┼──────┤\n" +
-		"│net-222│a-longer-name│DOWN  │\n" +
-		"└───────┴─────────────┴──────┘"
+	// each column, and a row separator under the header. The outer frame uses
+	// double lines; the internal separators stay thin.
+	want := "╔═══════╤═════════════╤══════╗\n" +
+		"║ID     │Name         │Status║\n" +
+		"╠───────┼─────────────┼──────╣\n" +
+		"║net-1  │nf           │ACTIVE║\n" +
+		"╠───────┼─────────────┼──────╣\n" +
+		"║net-222│a-longer-name│DOWN  ║\n" +
+		"╚═══════╧═════════════╧══════╝"
 	if got != want {
 		t.Fatalf("table output mismatch.\nwant:\n%s\ngot:\n%s", want, got)
 	}
@@ -144,14 +145,14 @@ func TestRenderTableAlignment(t *testing.T) {
 
 func TestIsTable(t *testing.T) {
 	cmd := &cobra.Command{Use: "leaf"}
-	cmd.Flags().String("output", YAML, "")
-	if IsTable(cmd) {
-		t.Fatal("default format must not be table")
+	cmd.Flags().String("output", Table, "")
+	if !IsTable(cmd) {
+		t.Fatal("default format must be table")
 	}
-	if err := cmd.Flags().Set("output", Table); err != nil {
+	if err := cmd.Flags().Set("output", YAML); err != nil {
 		t.Fatal(err)
 	}
-	if !IsTable(cmd) {
-		t.Fatal("expected IsTable to be true after --output table")
+	if IsTable(cmd) {
+		t.Fatal("expected IsTable to be false after --output yaml")
 	}
 }

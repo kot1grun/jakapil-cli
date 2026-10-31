@@ -31,7 +31,7 @@ The following objects are supported: registries, repositories and tokens.`,
 	cmd.PersistentFlags().StringP(client.FlagToken, "t", "", "Selectel API token (default $SLT_KS_TOKEN)")
 	cmd.PersistentFlags().StringP(client.FlagEndpoint, "e", client.DefaultEndpoint, "Selectel Keystone Identity v3 auth URL for authentication and service discovery (default $OS_AUTH_URL)")
 	cmd.PersistentFlags().Bool(client.FlagDebug, false, "print the discovered service catalog and CRaaS endpoints to stderr")
-	cmd.PersistentFlags().StringP("output", "o", output.YAML, "output format: json, yaml or table")
+	cmd.PersistentFlags().StringP("output", "o", output.Table, "output format: table, json or yaml")
 
 	cmd.AddCommand(
 		registry.NewRegistryCommand(),

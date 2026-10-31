@@ -59,7 +59,7 @@ func TestPrintTableValueDispatch(t *testing.T) {
 	if err := PrintTableValue(cmd, "value", mapper); err != nil {
 		t.Fatalf("PrintTableValue(non-table): %v", err)
 	}
-	if buf.Len() == 0 || strings.Contains(buf.String(), "│") {
+	if buf.Len() == 0 || strings.Contains(buf.String(), "║") {
 		t.Fatalf("non-table format must not render a bordered table, got:\n%s", buf.String())
 	}
 
@@ -70,7 +70,7 @@ func TestPrintTableValueDispatch(t *testing.T) {
 	if err := PrintTableValue(cmd, "eta", mapper); err != nil {
 		t.Fatalf("PrintTableValue(table): %v", err)
 	}
-	if !strings.Contains(buf.String(), "│Name") {
+	if !strings.Contains(buf.String(), "║Name") {
 		t.Fatalf("expected bordered table, got:\n%s", buf.String())
 	}
 }

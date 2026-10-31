@@ -204,7 +204,67 @@ func RenderTable(header []string, rows [][]string) (string, error) {
 	screen.Sync()
 
 	cells, _, _ := screen.GetContents()
-	return extractTable(cells, width, height), nil
+	return doubleOuterBorders(extractTable(cells, width, height)), nil
+}
+
+// doubleOuterBorders promotes the outer frame of a rendered table to heavy
+// box-drawing characters while keeping the internal grid separators thin. tview
+// draws the whole grid with single lines (┌─┬┐ │ ├┼┤ └┴┘); this post-processor
+// rewrites every line according to its first cell so the perimeter becomes
+// double (╔═╤╗ ║ ╠╣ ╚═╧╝) and only the internal column separators, row rules and
+// their crossings remain single (│ ─ ┼).
+func doubleOuterBorders(text string) string {
+	lines := strings.Split(text, "\n")
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if line == "" {
+			out = append(out, line)
+			continue
+		}
+		r := []rune(line)
+		switch r[0] {
+		case '┌': // outer top border: double horizontal, junction with thin column becomes ╤
+			for i, ch := range r {
+				switch ch {
+				case '─':
+					r[i] = '═'
+				case '┬':
+					r[i] = '╤'
+				case '┌':
+					r[i] = '╔'
+				case '┐':
+					r[i] = '╗'
+				}
+			}
+		case '├': // inner horizontal rule: only the side ends meet the double frame
+			for i, ch := range r {
+				switch ch {
+				case '├':
+					r[i] = '╠'
+				case '┤':
+					r[i] = '╣'
+				}
+			}
+		case '└': // outer bottom border: double horizontal, junction with thin column becomes ╧
+			for i, ch := range r {
+				switch ch {
+				case '─':
+					r[i] = '═'
+				case '┴':
+					r[i] = '╧'
+				case '└':
+					r[i] = '╚'
+				case '┘':
+					r[i] = '╝'
+				}
+			}
+		case '│': // content row: double the two edge cells, keep inner separators thin
+			r[0] = '║'
+			r[len(r)-1] = '║'
+		}
+		out = append(out, string(r))
+	}
+	return strings.Join(out, "\n")
 }
 
 // extractTable reassembles the screen cells written by tview into lines of

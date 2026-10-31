@@ -87,7 +87,7 @@ func TestRenderTable(t *testing.T) {
 		}
 	}
 	// The renderer must emit a bordered grid, not a JSON/YAML dump.
-	if !strings.Contains(out, "┌") || !strings.Contains(out, "│") {
+	if !strings.Contains(out, "╔") || !strings.Contains(out, "║") {
 		t.Fatalf("expected bordered table, got:\n%s", out)
 	}
 	if strings.Contains(out, `"id"`) {
