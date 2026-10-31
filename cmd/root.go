@@ -23,7 +23,14 @@ import (
 	"jakapil-cli/internal/authentication"
 )
 
-var cfgFile string
+var (
+	cfgFile string
+
+	// verbose enables the printing of informational runtime messages (e.g. the
+	// path of the loaded config file) to stderr. It is the global -v/--verbose
+	// flag; use --debug on vpc/mks for gophercloud request-level diagnostics.
+	verbose bool
+)
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -72,6 +79,7 @@ func init() {
 	// will be global for your application.
 
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $XDG_CONFIG_HOME/jakapil-cli.yaml, or ~/.config/jakapil-cli.yaml)")
+	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "print informational messages to stderr (e.g. the loaded config file)")
 
 	// Cobra also supports local flags, which will only run
 	// when this action is called directly.
@@ -98,8 +106,9 @@ func initConfig() {
 
 	viper.AutomaticEnv() // read in environment variables that match
 
-	// If a config file is found, read it in.
-	if err := viper.ReadInConfig(); err == nil {
+	// If a config file is found, read it in. The path is only echoed under
+	// -v/--verbose; silently using the config is the default behavior.
+	if err := viper.ReadInConfig(); err == nil && verbose {
 		fmt.Fprintln(os.Stderr, "Using config file:", viper.ConfigFileUsed())
 	}
 }
