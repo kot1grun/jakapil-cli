@@ -109,8 +109,8 @@ func newUpdateCommand() *cobra.Command {
 		Short: "Update a VPC subnet",
 		Long: `Update the attributes of an existing VPC subnet by its ID.
 
-At least one of --name, --description, --enable-dhcp or --gateway-ip must be
-provided.`,
+At least one of --name, --description, --enable-dhcp, --gateway-ip or
+--dns-nameservers must be provided.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c, err := client.NewNetworkServiceClient(cmd)
@@ -124,6 +124,7 @@ provided.`,
 	cmd.Flags().String("description", "", "new subnet description")
 	cmd.Flags().Bool("enable-dhcp", false, "enable the DHCP service")
 	cmd.Flags().String("gateway-ip", "", "gateway IP address")
+	cmd.Flags().StringSlice("dns-nameservers", nil, "DNS nameservers served via DHCP")
 	return cmd
 }
 

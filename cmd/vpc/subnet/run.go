@@ -168,8 +168,13 @@ func runUpdate(cmd *cobra.Command, c *gophercloud.ServiceClient, args []string) 
 		opts.GatewayIP = &val
 		applied = true
 	}
+	if cmd.Flags().Changed("dns-nameservers") {
+		val, _ := cmd.Flags().GetStringSlice("dns-nameservers")
+		opts.DNSNameservers = &val
+		applied = true
+	}
 	if !applied {
-		return fmt.Errorf("at least one update option is required: --name, --description, --enable-dhcp or --gateway-ip")
+		return fmt.Errorf("at least one update option is required: --name, --description, --enable-dhcp, --gateway-ip or --dns-nameservers")
 	}
 
 	subnet, err := subnets.Update(cmd.Context(), c, args[0], opts).Extract()

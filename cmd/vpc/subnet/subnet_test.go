@@ -146,6 +146,18 @@ func TestRunUpdateRequiresOptions(t *testing.T) {
 	}
 }
 
+func TestRunUpdateDNSNameservers(t *testing.T) {
+	ts := testutil.Neutron(t, subnetResource)
+	cmd, _ := testCommand(t)
+	if err := cmd.Flags().Set("dns-nameservers", "8.8.8.8,1.1.1.1"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runUpdate(cmd, testutil.NewClient(ts), []string{"sub-1"}); err != nil {
+		t.Fatalf("runUpdate with --dns-nameservers: %v", err)
+	}
+}
+
 func TestRunDelete(t *testing.T) {
 	ts := testutil.Neutron(t, subnetResource)
 	cmd, out := testCommand(t)
