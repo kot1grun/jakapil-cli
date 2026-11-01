@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/gophercloud/gophercloud/v2"
-	"github.com/spf13/cobra"
 
 	"jakapil-cli/internal/authentication"
 )
@@ -40,11 +39,9 @@ func TestAPStatus(t *testing.T) {
 }
 
 func TestHandleError(t *testing.T) {
-	cmd := &cobra.Command{Use: "leaf", Short: "leaf"}
-
 	// API 4xx/5xx: only the message, no usage dump.
 	for _, status := range []int{400, 401, 404, 429, 500, 503} {
-		msg, showUsage := handleError(cmd, gophercloud.ErrUnexpectedResponseCode{Actual: status})
+		msg, showUsage := handleError(gophercloud.ErrUnexpectedResponseCode{Actual: status})
 		if showUsage {
 			t.Fatalf("status %d must not carry usage, got %q", status, msg)
 		}
@@ -54,7 +51,7 @@ func TestHandleError(t *testing.T) {
 	}
 
 	// Non-API errors keep the usage block for the user to fix the invocation.
-	msg, showUsage := handleError(cmd, errors.New("accepts 1 arg(s), received 0"))
+	msg, showUsage := handleError(errors.New("accepts 1 arg(s), received 0"))
 	if !showUsage || msg == "" {
 		t.Fatalf("plain error must keep usage, got %q showUsage %v", msg, showUsage)
 	}
@@ -62,7 +59,7 @@ func TestHandleError(t *testing.T) {
 	// A locally detected expired stored token is reported without usage: the
 	// message already tells the user to renew it, so no invocation help.
 	expired := fmt.Errorf("stored token has expired at 2026-01-01T00:00:00Z: run \"jakapil-cli authenticate token issue\" to renew it: %w", authentication.ErrTokenExpired)
-	msg, showUsage = handleError(cmd, expired)
+	msg, showUsage = handleError(expired)
 	if showUsage || msg == "" {
 		t.Fatalf("expired token must not carry usage, got %q showUsage %v", msg, showUsage)
 	}

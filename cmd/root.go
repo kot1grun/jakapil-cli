@@ -50,7 +50,7 @@ func Execute() {
 	// Silent-error mode: cobra did not print anything, we own the report.
 	c, err := rootCmd.ExecuteC()
 	if err != nil {
-		msg, showUsage := handleError(c, err)
+		msg, showUsage := handleError(err)
 		fmt.Fprintln(os.Stderr, colorize(msg))
 		if showUsage {
 			fmt.Fprintln(os.Stderr, c.UsageString())

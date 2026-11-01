@@ -4,7 +4,6 @@ import (
 	"errors"
 	"os"
 
-	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
 	"jakapil-cli/internal/authentication"
@@ -49,7 +48,7 @@ func apiStatus(err error) (int, bool) {
 // accompanies the message so the user sees how to fix the invocation.
 //
 // It returns the message to print and whether the usage text should follow.
-func handleError(c *cobra.Command, err error) (msg string, showUsage bool) {
+func handleError(err error) (msg string, showUsage bool) {
 	msg = "Error: " + err.Error()
 	if status, ok := apiStatus(err); ok && status >= 400 {
 		return msg, false
