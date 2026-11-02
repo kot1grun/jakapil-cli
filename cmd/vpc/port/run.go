@@ -6,8 +6,10 @@ package port
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/gophercloud/gophercloud/v2"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/portsecurity"
 	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/ports"
 	"github.com/gophercloud/gophercloud/v2/pagination"
 	"github.com/spf13/cobra"
@@ -120,8 +122,20 @@ func runCreate(cmd *cobra.Command, c *gophercloud.ServiceClient) error {
 		val, _ := cmd.Flags().GetBool("admin-state-up")
 		opts.AdminStateUp = &val
 	}
+	if pairs := addressPairs(cmd); len(pairs) > 0 {
+		opts.AllowedAddressPairs = pairs
+	}
 
-	port, err := ports.Create(cmd.Context(), c, opts).Extract()
+	var createOpts ports.CreateOptsBuilder = opts
+	if cmd.Flags().Changed("port-security-enabled") {
+		val, _ := cmd.Flags().GetBool("port-security-enabled")
+		createOpts = portsecurity.PortCreateOptsExt{
+			CreateOptsBuilder:   opts,
+			PortSecurityEnabled: &val,
+		}
+	}
+
+	port, err := ports.Create(cmd.Context(), c, createOpts).Extract()
 	if err != nil {
 		return err
 	}
@@ -132,6 +146,11 @@ func runCreate(cmd *cobra.Command, c *gophercloud.ServiceClient) error {
 func runUpdate(cmd *cobra.Command, c *gophercloud.ServiceClient, args []string) error {
 	opts := ports.UpdateOpts{}
 	applied := false
+	var securityEnabled *bool
+
+	if appendAap, _ := cmd.Flags().GetBool("append-aap"); appendAap && !cmd.Flags().Changed("allowed-address-pair") {
+		return fmt.Errorf("--append-aap requires --allowed-address-pair")
+	}
 
 	if cmd.Flags().Changed("name") {
 		val := mustString(cmd, "name")
@@ -158,11 +177,36 @@ func runUpdate(cmd *cobra.Command, c *gophercloud.ServiceClient, args []string) 
 		opts.DeviceOwner = &val
 		applied = true
 	}
+	if cmd.Flags().Changed("allowed-address-pair") {
+		pairs := addressPairs(cmd)
+		if appendAap, _ := cmd.Flags().GetBool("append-aap"); appendAap {
+			existing, err := fetchExistingAAPs(cmd, c, args[0])
+			if err != nil {
+				return err
+			}
+			pairs = append(existing, pairs...)
+		}
+		opts.AllowedAddressPairs = &pairs
+		applied = true
+	}
+	if cmd.Flags().Changed("port-security-enabled") {
+		val, _ := cmd.Flags().GetBool("port-security-enabled")
+		securityEnabled = &val
+		applied = true
+	}
 	if !applied {
-		return fmt.Errorf("at least one update option is required: --name, --description, --admin-state-up, --device-id or --device-owner")
+		return fmt.Errorf("at least one update option is required: --name, --description, --admin-state-up, --device-id, --device-owner, --port-security-enabled or --allowed-address-pair")
 	}
 
-	port, err := ports.Update(cmd.Context(), c, args[0], opts).Extract()
+	var updateOpts ports.UpdateOptsBuilder = opts
+	if securityEnabled != nil {
+		updateOpts = portsecurity.PortUpdateOptsExt{
+			UpdateOptsBuilder:   opts,
+			PortSecurityEnabled: securityEnabled,
+		}
+	}
+
+	port, err := ports.Update(cmd.Context(), c, args[0], updateOpts).Extract()
 	if err != nil {
 		return err
 	}
@@ -182,4 +226,30 @@ func runDelete(cmd *cobra.Command, c *gophercloud.ServiceClient, args []string) 
 func mustString(cmd *cobra.Command, name string) string {
 	v, _ := cmd.Flags().GetString(name)
 	return v
+}
+
+// addressPairs parses the repeatable --allowed-address-pair flag into
+// ports.AddressPair values. Each entry is either "IP" or "IP,MAC".
+func addressPairs(cmd *cobra.Command) []ports.AddressPair {
+	raw, _ := cmd.Flags().GetStringSlice("allowed-address-pair")
+	pairs := make([]ports.AddressPair, 0, len(raw))
+	for _, r := range raw {
+		parts := strings.Split(r, ",")
+		pair := ports.AddressPair{IPAddress: parts[0]}
+		if len(parts) > 1 {
+			pair.MACAddress = parts[1]
+		}
+		pairs = append(pairs, pair)
+	}
+	return pairs
+}
+
+// fetchExistingAAPs returns the port's current allowed address pairs so that
+// --append-aap can extend them instead of replacing the whole list.
+func fetchExistingAAPs(cmd *cobra.Command, c *gophercloud.ServiceClient, id string) ([]ports.AddressPair, error) {
+	p, err := ports.Get(cmd.Context(), c, id).Extract()
+	if err != nil {
+		return nil, err
+	}
+	return p.AllowedAddressPairs, nil
 }

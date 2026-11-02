@@ -24,7 +24,7 @@ var portResource = testutil.Resource{
 		{"id": "port-1", "name": "pf", "network_id": "net-1", "status": "ACTIVE"},
 		{"id": "port-2", "name": "second", "network_id": "net-1", "status": "DOWN"},
 	},
-	Get:     nil,
+	Get:     map[string]any{"id": "port-1", "name": "pf", "network_id": "net-1", "status": "ACTIVE", "allowed_address_pairs": []map[string]any{{"ip_address": "10.0.0.2"}}},
 	Updated: map[string]any{"id": "port-1", "name": "renamed", "network_id": "net-1", "status": "ACTIVE"},
 	Created: func(in map[string]any) map[string]any {
 		return map[string]any{"id": "port-new", "name": "pf", "network_id": in["network_id"], "status": "DOWN"}
@@ -47,6 +47,9 @@ func testCommand(t *testing.T) (*cobra.Command, *bytes.Buffer) {
 	fs.String("id", "", "")
 	fs.Int("limit", 0, "")
 	fs.Bool("admin-state-up", true, "")
+	fs.Bool("port-security-enabled", true, "")
+	fs.StringSlice("allowed-address-pair", nil, "")
+	fs.Bool("append-aap", false, "")
 
 	var out bytes.Buffer
 	cmd.SetOut(&out)
@@ -116,6 +119,60 @@ func TestRunUpdateRequiresOptions(t *testing.T) {
 
 	if err := runUpdate(cmd, testutil.NewClient(ts), []string{"port-1"}); err == nil {
 		t.Fatal("expected error when no update option is set")
+	}
+}
+
+func TestRunUpdateAllowedAddressPairs(t *testing.T) {
+	ts := testutil.Neutron(t, portResource)
+	cmd, _ := testCommand(t)
+	if err := cmd.Flags().Set("allowed-address-pair", "10.0.0.5,aa:bb:cc:dd:ee:ff"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runUpdate(cmd, testutil.NewClient(ts), []string{"port-1"}); err != nil {
+		t.Fatalf("runUpdate with --allowed-address-pair: %v", err)
+	}
+}
+
+func TestRunUpdateDisablesPortSecurity(t *testing.T) {
+	ts := testutil.Neutron(t, portResource)
+	cmd, _ := testCommand(t)
+	if err := cmd.Flags().Set("port-security-enabled", "false"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runUpdate(cmd, testutil.NewClient(ts), []string{"port-1"}); err != nil {
+		t.Fatalf("runUpdate with --port-security-enabled=false: %v", err)
+	}
+}
+
+func TestRunUpdateAppendAAP(t *testing.T) {
+	ts := testutil.Neutron(t, portResource)
+	cmd, _ := testCommand(t)
+	if err := cmd.Flags().Set("allowed-address-pair", "10.0.0.5,aa:bb:cc:dd:ee:ff"); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Flags().Set("append-aap", "true"); err != nil {
+		t.Fatal(err)
+	}
+
+	// runUpdate fetches the port's current pairs (10.0.0.2 from the fake Get)
+	// and appends the new pair instead of replacing them. Without the fetch the
+	// fake server has no handler for GET /ports/port-1 beyond the list.
+	if err := runUpdate(cmd, testutil.NewClient(ts), []string{"port-1"}); err != nil {
+		t.Fatalf("runUpdate with --append-aap: %v", err)
+	}
+}
+
+func TestRunUpdateAppendAAPRequiresPairs(t *testing.T) {
+	ts := testutil.Neutron(t, portResource)
+	cmd, _ := testCommand(t)
+	if err := cmd.Flags().Set("append-aap", "true"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runUpdate(cmd, testutil.NewClient(ts), []string{"port-1"}); err == nil {
+		t.Fatal("expected error when --append-aap is used without --allowed-address-pair")
 	}
 }
 

@@ -80,6 +80,8 @@ The parent network is required (--network-id).`,
 	cmd.Flags().String("mac-address", "", "MAC address for the port")
 	cmd.Flags().String("device-id", "", "ID of the device attached to this port")
 	cmd.Flags().String("device-owner", "", "the type of device that owns this port")
+	cmd.Flags().Bool("port-security-enabled", true, "enable port security")
+	cmd.Flags().StringSlice("allowed-address-pair", nil, "allowed address pair as IP or IP,MAC (repeatable)")
 	return cmd
 }
 
@@ -89,8 +91,9 @@ func newUpdateCommand() *cobra.Command {
 		Short: "Update a VPC port",
 		Long: `Update the attributes of an existing VPC port by its ID.
 
-At least one of --name, --description, --admin-state-up, --device-id or
---device-owner must be provided.`,
+At least one of --name, --description, --admin-state-up, --device-id,
+--device-owner, --port-security-enabled or --allowed-address-pair must be
+provided.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c, err := client.NewNetworkServiceClient(cmd)
@@ -105,6 +108,9 @@ At least one of --name, --description, --admin-state-up, --device-id or
 	cmd.Flags().Bool("admin-state-up", false, "set the administrative state up")
 	cmd.Flags().String("device-id", "", "ID of the device attached to this port")
 	cmd.Flags().String("device-owner", "", "the type of device that owns this port")
+	cmd.Flags().Bool("port-security-enabled", false, "enable port security")
+	cmd.Flags().StringSlice("allowed-address-pair", nil, "allowed address pair as IP or IP,MAC (repeatable)")
+	cmd.Flags().Bool("append-aap", false, "append --allowed-address-pair values to the existing allowed address pairs instead of replacing them")
 	return cmd
 }
 
