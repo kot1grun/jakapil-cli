@@ -37,6 +37,13 @@ func RenderRegions(cmd *cobra.Command, header []string, regionRows []RegionRows,
 	if IsTable(cmd) {
 		rows := make([][]string, 0)
 		for _, rr := range regionRows {
+			if len(rr.Rows) == 0 {
+				// A region with nothing found would otherwise vanish from the
+				// combined table; surface it as a warning so the reader knows
+				// it was queried and returned nothing.
+				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: no resources found in region %s\n", rr.Region)
+				continue
+			}
 			for _, r := range rr.Rows {
 				rows = append(rows, append([]string{rr.Region}, r...))
 			}
@@ -61,7 +68,7 @@ func RenderRegionsBestEffort(cmd *cobra.Command, header []string, results []para
 	for _, res := range results {
 		if res.Err != nil {
 			failed = append(failed, res.Region)
-			fmt.Fprintf(cmd.ErrOrStderr(), "warning: region %s unavailable: %v\n", res.Region, res.Err)
+			fmt.Fprintf(cmd.ErrOrStderr(), "Warning: region %s unavailable: %v\n", res.Region, res.Err)
 			continue
 		}
 		regionRows = append(regionRows, RegionRows{Region: res.Region, Rows: res.Rows})

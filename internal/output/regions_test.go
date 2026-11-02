@@ -73,6 +73,53 @@ func TestRenderRegions(t *testing.T) {
 	})
 }
 
+// TestRenderRegionsEmptyRegion verifies that a region with no rows yields a
+// per-region warning in the table format instead of silently vanishing, and
+// does not leak into the combined table.
+func TestRenderRegionsEmptyRegion(t *testing.T) {
+	header := []string{"ID"}
+	regionRows := []RegionRows{
+		{Region: "ru-1", Rows: [][]string{{"a"}}},
+		{Region: "ru-2", Rows: [][]string{}},
+	}
+	grouped := []RegionValue{
+		{Region: "ru-1", Value: "a"},
+		{Region: "ru-2", Value: nil},
+	}
+
+	cmd := &cobra.Command{Use: "leaf"}
+	cmd.Flags().StringP("output", "o", Table, "")
+	var out, warn strings.Builder
+	cmd.SetOut(&out)
+	cmd.SetErr(&warn)
+
+	if err := RenderRegions(cmd, header, regionRows, grouped); err != nil {
+		t.Fatalf("RenderRegions: %v", err)
+	}
+	if !strings.Contains(warn.String(), "ru-2") || !strings.Contains(warn.String(), "no resources found") {
+		t.Fatalf("expected a per-region empty warning on stderr, got: %q", warn.String())
+	}
+	// The empty region must not become a table row; only ru-1 renders.
+	if got := strings.Count(out.String(), "ru-1"); got != 1 {
+		t.Fatalf("ru-1 appears %d times, want 1; got:\n%s", got, out.String())
+	}
+	if strings.Contains(out.String(), "ru-2") {
+		t.Fatalf("empty region ru-2 leaked into the table output:\n%s", out.String())
+	}
+
+	// Long-form output keeps the empty region in the grouped result unchanged.
+	cmd2 := &cobra.Command{Use: "leaf"}
+	cmd2.Flags().StringP("output", "o", YAML, "")
+	var out2 strings.Builder
+	cmd2.SetOut(&out2)
+	if err := RenderRegions(cmd2, header, regionRows, grouped); err != nil {
+		t.Fatalf("RenderRegions(yaml): %v", err)
+	}
+	if !strings.Contains(out2.String(), "ru-2") {
+		t.Fatalf("long-form output must keep the empty region, got:\n%s", out2.String())
+	}
+}
+
 // TestRenderRegionsBestEffort verifies that a failed region is skipped with a
 // warning on stderr, the healthy regions are still rendered, and the command
 // reports an error naming the failed region so it exits non-zero.

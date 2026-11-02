@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"reflect"
 	"strings"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/rivo/tview"
 	"github.com/spf13/cobra"
 	"go.yaml.in/yaml/v3"
+	"golang.org/x/term"
 )
 
 const (
@@ -113,6 +115,24 @@ func YesNo(b bool) string {
 	return "no"
 }
 
+// ANSI escapes used to highlight non-fatal notices (e.g. an empty result set)
+// when stdout is a terminal. They are omitted when output is redirected or
+// piped, so the stream stays plain and parseable (same policy as cmd/errorout).
+const (
+	ansiYellow = "\x1b[1;33m" // bold yellow
+	ansiReset  = "\x1b[0m"
+)
+
+// Yellow wraps s in bold ANSI yellow when w is attached to a terminal and
+// returns s unchanged otherwise. w must be the writer the coloured text is
+// actually going to, so buffer-backed (non-file) writers get plain text.
+func Yellow(w io.Writer, s string) string {
+	if f, ok := w.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
+		return ansiYellow + s + ansiReset
+	}
+	return s
+}
+
 // HumanBytes renders a byte count in a human-readable decimal form (KiB/MiB/
 // GiB/...), used to keep table cells short.
 func HumanBytes(n int64) string {
@@ -133,6 +153,14 @@ func HumanBytes(n int64) string {
 // tcell simulation screen, so column widths and alignment match what tview
 // itself would draw in a full TUI.
 func PrintTable(cmd *cobra.Command, header []string, rows [][]string) error {
+	if len(rows) == 0 {
+		// A header-only table carries no information for a human reader, so a
+		// plain notice is more useful. Long-form formats (json/yaml) keep the
+		// empty collection untouched and never reach this branch.
+		w := cmd.OutOrStdout()
+		_, err := fmt.Fprintln(w, Yellow(w, "No resources found."))
+		return err
+	}
 	text, err := RenderTable(header, rows)
 	if err != nil {
 		return err

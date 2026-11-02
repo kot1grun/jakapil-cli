@@ -116,6 +116,22 @@ func TestPrintUnknownFormat(t *testing.T) {
 	}
 }
 
+func TestPrintTableEmpty(t *testing.T) {
+	cmd := &cobra.Command{Use: "leaf"}
+	buf := &strings.Builder{}
+	cmd.SetOut(buf)
+
+	if err := PrintTable(cmd, []string{"ID", "Name"}, nil); err != nil {
+		t.Fatalf("PrintTable: %v", err)
+	}
+	if !strings.Contains(buf.String(), "No resources found.") {
+		t.Fatalf("expected a plain empty notice, got: %q", buf.String())
+	}
+	if strings.Contains(buf.String(), "║") {
+		t.Fatalf("must not render a header-only table, got: %q", buf.String())
+	}
+}
+
 func TestRenderTableAlignment(t *testing.T) {
 	got, err := RenderTable(
 		[]string{"ID", "Name", "Status"},
