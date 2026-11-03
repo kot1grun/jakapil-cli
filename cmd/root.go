@@ -15,6 +15,7 @@ import (
 	_ "github.com/gophercloud/gophercloud/v2/openstack/identity/v3/tokens"
 
 	"jakapil-cli/cmd/authenticate"
+	"jakapil-cli/cmd/compute"
 	"jakapil-cli/cmd/config"
 	"jakapil-cli/cmd/craas"
 	"jakapil-cli/cmd/mks"
@@ -79,6 +80,9 @@ func init() {
 
 	// Register the vpc command tree (vpc network, vpc subnet).
 	rootCmd.AddCommand(vpc.NewVpcCommand())
+
+	// Register the compute command tree (compute flavor).
+	rootCmd.AddCommand(compute.NewComputeCommand())
 
 	// Here you will define your flags and configuration settings.
 	// Cobra supports persistent flags, which, if defined here,
