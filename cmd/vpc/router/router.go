@@ -27,6 +27,7 @@ func NewRouterCommand() *cobra.Command {
 		newCreateCommand(),
 		newUpdateCommand(),
 		newDeleteCommand(),
+		newGatewayCommand(),
 		newPortCommand(),
 	)
 
@@ -88,8 +89,11 @@ func newUpdateCommand() *cobra.Command {
 		Short: "Update a VPC router",
 		Long: `Update the attributes of an existing VPC router by its ID.
 
-At least one of --name, --description, --admin-state-up, --distributed or
---gateway-network-id must be provided.`,
+At least one of --name, --description, --admin-state-up, --distributed,
+--gateway-network-id, --enable-snat or --disable-snat must be provided.
+
+--enable-snat and --disable-snat are mutually exclusive and, together with
+--gateway-network-id, control source NAT (SNAT) on the external gateway.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c, err := client.NewNetworkServiceClient(cmd)
@@ -104,6 +108,9 @@ At least one of --name, --description, --admin-state-up, --distributed or
 	cmd.Flags().Bool("admin-state-up", false, "set the administrative state up")
 	cmd.Flags().Bool("distributed", false, "set the router as distributed")
 	cmd.Flags().String("gateway-network-id", "", "ID of the external network to use as gateway")
+	cmd.Flags().Bool("enable-snat", false, "enable source NAT (SNAT) on the external gateway (requires --gateway-network-id)")
+	cmd.Flags().Bool("disable-snat", false, "disable source NAT (SNAT) on the external gateway (requires --gateway-network-id)")
+	cmd.MarkFlagsMutuallyExclusive("enable-snat", "disable-snat")
 	return cmd
 }
 
@@ -183,5 +190,63 @@ At least one of --subnet-id or --port-id is required.`,
 	}
 	cmd.Flags().String("subnet-id", "", "ID of the subnet to detach")
 	cmd.Flags().String("port-id", "", "ID of the port to detach")
+	return cmd
+}
+func newGatewayCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "gateway",
+		Short: "Manage the external gateway of a VPC router",
+		Long:  `Attach (add) or detach (delete) the external gateway of a VPC router.`,
+		Run: func(cmd *cobra.Command, args []string) {
+			_ = cmd.Help()
+		},
+	}
+
+	cmd.AddCommand(
+		newGatewayAddCommand(),
+		newGatewayDeleteCommand(),
+	)
+
+	return cmd
+}
+
+func newGatewayAddCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "add <router-id>",
+		Short: "Attach an external gateway to a VPC router",
+		Long: `Attach an external gateway to a VPC router.
+
+--gateway-network-id is required. Use --enable-snat to control source
+network address translation on the gateway (default keeps the provider
+default).`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, err := client.NewNetworkServiceClient(cmd)
+			if err != nil {
+				return err
+			}
+			return runGatewayAdd(cmd, c, args)
+		},
+	}
+	cmd.Flags().String("gateway-network-id", "", "ID of the external network to use as gateway (required)")
+	cmd.Flags().Bool("enable-snat", true, "enable source NAT (SNAT) on the external gateway")
+	return cmd
+}
+
+func newGatewayDeleteCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "delete <router-id>",
+		Short:   "Detach the external gateway from a VPC router",
+		Long:    `Detach the external gateway from a VPC router by clearing its external_gateway_info.`,
+		Aliases: []string{"rm", "remove"},
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, err := client.NewNetworkServiceClient(cmd)
+			if err != nil {
+				return err
+			}
+			return runGatewayDelete(cmd, c, args)
+		},
+	}
 	return cmd
 }

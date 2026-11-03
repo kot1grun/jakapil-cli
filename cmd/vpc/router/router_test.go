@@ -58,6 +58,8 @@ func testCommand(t *testing.T) (*cobra.Command, *bytes.Buffer) {
 	fs.Bool("admin-state-up", true, "")
 	fs.Bool("distributed", false, "")
 	fs.String("gateway-network-id", "", "")
+	fs.Bool("enable-snat", true, "")
+	fs.Bool("disable-snat", false, "")
 	fs.String("subnet-id", "", "")
 	fs.String("port-id", "", "")
 
@@ -308,4 +310,218 @@ func TestRunPortDeleteRequiresOpts(t *testing.T) {
 
 // compile-time guard that the helpers used above map to the routers API.
 var _ = routers.ListOpts{}
+var _ = routers.ListOpts{}
+
+func TestRunGatewayAdd(t *testing.T) {
+	fakeServer := th.SetupHTTP()
+	t.Cleanup(fakeServer.Teardown)
+
+	const routerID = "4e8e5957-649f-477b-9e5b-f1f75b21c03c"
+	fakeServer.Mux.HandleFunc("/v2.0/routers/"+routerID, func(w http.ResponseWriter, r *http.Request) {
+		verifyRequest(t, r, "PUT")
+		th.TestHeader(t, r, "Content-Type", "application/json")
+		th.TestJSONRequest(t, r, `{
+    "router": {
+        "external_gateway_info": {
+            "network_id": "8ca37218-28ff-41cb-9b10-039601ea7e6b",
+            "enable_snat": false
+        }
+    }
+}`)
+		w.Header().Add("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `{
+    "router": {
+        "id": "`+routerID+`",
+        "status": "ACTIVE",
+        "name": "router1",
+        "admin_state_up": true,
+        "distributed": false,
+        "external_gateway_info": {
+            "network_id": "8ca37218-28ff-41cb-9b10-039601ea7e6b",
+            "enable_snat": false
+        }
+    }
+}`)
+	})
+
+	cmd, out := testCommand(t)
+	if err := cmd.Flags().Set("gateway-network-id", "8ca37218-28ff-41cb-9b10-039601ea7e6b"); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Flags().Set("enable-snat", "false"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runGatewayAdd(cmd, common.ServiceClient(fakeServer), []string{routerID}); err != nil {
+		t.Fatalf("runGatewayAdd: %v", err)
+	}
+	if !strings.Contains(out.String(), routerID) {
+		t.Fatalf("gateway add output missing updated router; got:\n%s", out.String())
+	}
+}
+
+func TestRunGatewayAddRequiresNetwork(t *testing.T) {
+	cmd, _ := testCommand(t)
+	if err := runGatewayAdd(cmd, nil, []string{"r-1"}); err == nil {
+		t.Fatal("runGatewayAdd succeeded without gateway-network-id; want an error")
+	}
+}
+
+func TestRunGatewayDelete(t *testing.T) {
+	fakeServer := th.SetupHTTP()
+	t.Cleanup(fakeServer.Teardown)
+
+	const routerID = "4e8e5957-649f-477b-9e5b-f1f75b21c03c"
+	fakeServer.Mux.HandleFunc("/v2.0/routers/"+routerID, func(w http.ResponseWriter, r *http.Request) {
+		verifyRequest(t, r, "PUT")
+		th.TestHeader(t, r, "Content-Type", "application/json")
+		th.TestJSONRequest(t, r, `{
+    "router": {
+        "external_gateway_info": null
+    }
+}`)
+		w.Header().Add("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `{
+    "router": {
+        "id": "`+routerID+`",
+        "status": "ACTIVE",
+        "name": "router1",
+        "admin_state_up": true,
+        "distributed": false,
+        "external_gateway_info": null
+    }
+}`)
+	})
+
+	cmd, out := testCommand(t)
+	if err := runGatewayDelete(cmd, common.ServiceClient(fakeServer), []string{routerID}); err != nil {
+		t.Fatalf("runGatewayDelete: %v", err)
+	}
+	if want := "removed external gateway from router " + routerID; !strings.Contains(out.String(), want) {
+		t.Fatalf("gateway delete output missing %q; got:\n%s", want, out.String())
+	}
+}
+
+// compile-time guard that the helpers used above map to the routers API.
+var _ = routers.ListOpts{}
+
+func TestRunUpdateEnableSNAT(t *testing.T) {
+	fakeServer := th.SetupHTTP()
+	t.Cleanup(fakeServer.Teardown)
+
+	const routerID = "4e8e5957-649f-477b-9e5b-f1f75b21c03c"
+	fakeServer.Mux.HandleFunc("/v2.0/routers/"+routerID, func(w http.ResponseWriter, r *http.Request) {
+		verifyRequest(t, r, "PUT")
+		th.TestHeader(t, r, "Content-Type", "application/json")
+		th.TestJSONRequest(t, r, `{
+    "router": {
+        "external_gateway_info": {
+            "network_id": "8ca37218-28ff-41cb-9b10-039601ea7e6b",
+            "enable_snat": true
+        }
+    }
+}`)
+		w.Header().Add("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `{
+    "router": {
+        "id": "`+routerID+`",
+        "name": "router1",
+        "status": "ACTIVE",
+        "admin_state_up": true,
+        "external_gateway_info": {
+            "network_id": "8ca37218-28ff-41cb-9b10-039601ea7e6b",
+            "enable_snat": true
+        }
+    }
+}`)
+	})
+
+	cmd, _ := testCommand(t)
+	if err := cmd.Flags().Set("gateway-network-id", "8ca37218-28ff-41cb-9b10-039601ea7e6b"); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Flags().Set("enable-snat", "true"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runUpdate(cmd, common.ServiceClient(fakeServer), []string{routerID}); err != nil {
+		t.Fatalf("runUpdate with --enable-snat: %v", err)
+	}
+}
+
+func TestRunUpdateDisableSNAT(t *testing.T) {
+	fakeServer := th.SetupHTTP()
+	t.Cleanup(fakeServer.Teardown)
+
+	const routerID = "4e8e5957-649f-477b-9e5b-f1f75b21c03c"
+	fakeServer.Mux.HandleFunc("/v2.0/routers/"+routerID, func(w http.ResponseWriter, r *http.Request) {
+		verifyRequest(t, r, "PUT")
+		th.TestHeader(t, r, "Content-Type", "application/json")
+		th.TestJSONRequest(t, r, `{
+    "router": {
+        "external_gateway_info": {
+            "network_id": "8ca37218-28ff-41cb-9b10-039601ea7e6b",
+            "enable_snat": false
+        }
+    }
+}`)
+		w.Header().Add("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `{
+    "router": {
+        "id": "`+routerID+`",
+        "name": "router1",
+        "status": "ACTIVE",
+        "admin_state_up": true,
+        "external_gateway_info": {
+            "network_id": "8ca37218-28ff-41cb-9b10-039601ea7e6b",
+            "enable_snat": false
+        }
+    }
+}`)
+	})
+
+	cmd, _ := testCommand(t)
+	if err := cmd.Flags().Set("gateway-network-id", "8ca37218-28ff-41cb-9b10-039601ea7e6b"); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Flags().Set("disable-snat", "true"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runUpdate(cmd, common.ServiceClient(fakeServer), []string{routerID}); err != nil {
+		t.Fatalf("runUpdate with --disable-snat: %v", err)
+	}
+}
+
+func TestRunUpdateSnatRequiresGateway(t *testing.T) {
+	cmd, _ := testCommand(t)
+	if err := cmd.Flags().Set("enable-snat", "true"); err != nil {
+		t.Fatal(err)
+	}
+	if err := runUpdate(cmd, nil, []string{"r-1"}); err == nil {
+		t.Fatal("runUpdate with --enable-snat but no --gateway-network-id succeeded; want an error")
+	}
+}
+
+func TestRunUpdateSnatMutuallyExclusive(t *testing.T) {
+	cmd, _ := testCommand(t)
+	if err := cmd.Flags().Set("enable-snat", "true"); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Flags().Set("disable-snat", "true"); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Flags().Set("gateway-network-id", "net-1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := runUpdate(cmd, nil, []string{"r-1"}); err == nil {
+		t.Fatal("runUpdate with both --enable-snat and --disable-snat succeeded; want an error")
+	}
+}
+
+// compile-time guard that the helpers used above map to the routers API.
 var _ = routers.ListOpts{}

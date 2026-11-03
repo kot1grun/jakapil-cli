@@ -144,13 +144,40 @@ func runUpdate(cmd *cobra.Command, c *gophercloud.ServiceClient, args []string) 
 		opts.Distributed = &val
 		applied = true
 	}
+
+	// --enable-snat/--disable-snat are mutually exclusive (enforced by cobra)
+	// and only meaningful while (re)setting the external gateway. The presence
+	// of the flag determines the value sent in external_gateway_info.
+	snatSet, snat := false, false
+	if cmd.Flags().Changed("enable-snat") {
+		snat = true
+		snatSet = true
+	} else if cmd.Flags().Changed("disable-snat") {
+		snat = false
+		snatSet = true
+	}
+
 	if cmd.Flags().Changed("gateway-network-id") {
 		val := mustString(cmd, "gateway-network-id")
-		opts.GatewayInfo = &routers.GatewayInfo{NetworkID: val}
+		gw := &routers.GatewayInfo{NetworkID: val}
+		if snatSet {
+			gw.EnableSNAT = &snat
+		}
+		opts.GatewayInfo = gw
 		applied = true
 	}
+
+	// Explicit guard (defense in depth) so that snat flags without a gateway
+	// produce a clear CLI error even when cobra's mutual-exclusion check is
+	// bypassed (e.g. by setting both flags from code).
+	if cmd.Flags().Changed("enable-snat") && cmd.Flags().Changed("disable-snat") {
+		return fmt.Errorf("--enable-snat and --disable-snat are mutually exclusive")
+	}
+	if snatSet && !cmd.Flags().Changed("gateway-network-id") {
+		return fmt.Errorf("--enable-snat/--disable-snat require --gateway-network-id")
+	}
 	if !applied {
-		return fmt.Errorf("at least one update option is required: --name, --description, --admin-state-up, --distributed or --gateway-network-id")
+		return fmt.Errorf("at least one update option is required: --name, --description, --admin-state-up, --distributed, --gateway-network-id, --enable-snat or --disable-snat")
 	}
 
 	router, err := routers.Update(cmd.Context(), c, args[0], opts).Extract()
@@ -214,5 +241,47 @@ func runPortDelete(cmd *cobra.Command, c *gophercloud.ServiceClient, args []stri
 		return err
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "detached interface from router %s (port %s, subnet %s)\n", routerID, info.PortID, info.SubnetID)
+	return nil
+}
+
+// gatewayClearOpts is a router update that clears the external gateway by
+// sending external_gateway_info: null. This cannot be expressed with the
+// plain routers.UpdateOpts, whose *GatewayInfo with omitempty either omits the
+// field (nil) or sends {} (non-nil empty struct).
+type gatewayClearOpts struct{}
+
+func (gatewayClearOpts) ToRouterUpdateMap() (map[string]any, error) {
+	return map[string]any{
+		"router": map[string]any{"external_gateway_info": nil},
+	}, nil
+}
+
+// runGatewayAdd attaches an external gateway (network_id and optional
+// enable_snat) to a router and renders the updated router.
+func runGatewayAdd(cmd *cobra.Command, c *gophercloud.ServiceClient, args []string) error {
+	networkID, _ := cmd.Flags().GetString("gateway-network-id")
+	if networkID == "" {
+		return fmt.Errorf("external gateway network is required: pass --gateway-network-id")
+	}
+	gw := routers.GatewayInfo{NetworkID: networkID}
+	if cmd.Flags().Changed("enable-snat") {
+		snat, _ := cmd.Flags().GetBool("enable-snat")
+		gw.EnableSNAT = &snat
+	}
+
+	router, err := routers.Update(cmd.Context(), c, args[0], routers.UpdateOpts{GatewayInfo: &gw}).Extract()
+	if err != nil {
+		return err
+	}
+	return render(cmd, router)
+}
+
+// runGatewayDelete clears the external gateway from a router and prints a
+// confirmation line.
+func runGatewayDelete(cmd *cobra.Command, c *gophercloud.ServiceClient, args []string) error {
+	if _, err := routers.Update(cmd.Context(), c, args[0], gatewayClearOpts{}).Extract(); err != nil {
+		return err
+	}
+	fmt.Fprintf(cmd.OutOrStdout(), "removed external gateway from router %s\n", args[0])
 	return nil
 }
