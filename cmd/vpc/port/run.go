@@ -125,6 +125,11 @@ func runCreate(cmd *cobra.Command, c *gophercloud.ServiceClient) error {
 	if pairs := addressPairs(cmd); len(pairs) > 0 {
 		opts.AllowedAddressPairs = pairs
 	}
+	if ips, err := fixedIPs(cmd); err != nil {
+		return err
+	} else if len(ips) > 0 {
+		opts.FixedIPs = ips
+	}
 
 	var createOpts ports.CreateOptsBuilder = opts
 	if cmd.Flags().Changed("port-security-enabled") {
@@ -252,4 +257,39 @@ func fetchExistingAAPs(cmd *cobra.Command, c *gophercloud.ServiceClient, id stri
 		return nil, err
 	}
 	return p.AllowedAddressPairs, nil
+}
+
+// fixedIPs parses the repeatable --fixed-ip flag into ports.IP values. Each
+// entry is a comma-separated list of "subnet=<id>" and "ip-address=<ip>"
+// keys; at least one of them must be present.
+func fixedIPs(cmd *cobra.Command) ([]ports.IP, error) {
+	raw, _ := cmd.Flags().GetStringArray("fixed-ip")
+	ips := make([]ports.IP, 0, len(raw))
+	for _, r := range raw {
+		var ip ports.IP
+		set := false
+		for _, part := range strings.Split(r, ",") {
+			kv := strings.SplitN(part, "=", 2)
+			if len(kv) != 2 {
+				return nil, fmt.Errorf("invalid --fixed-ip entry %q: expected subnet=<subnet-id>,ip-address=<ip-address>", r)
+			}
+			key := strings.TrimSpace(kv[0])
+			value := strings.TrimSpace(kv[1])
+			switch key {
+			case "subnet":
+				ip.SubnetID = value
+				set = true
+			case "ip-address":
+				ip.IPAddress = value
+				set = true
+			default:
+				return nil, fmt.Errorf("invalid --fixed-ip key %q in %q: expected subnet or ip-address", key, r)
+			}
+		}
+		if !set {
+			return nil, fmt.Errorf("invalid --fixed-ip entry %q: at least one of subnet or ip-address is required", r)
+		}
+		ips = append(ips, ip)
+	}
+	return ips, nil
 }

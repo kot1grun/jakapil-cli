@@ -6,9 +6,13 @@ package port
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/common"
+	th "github.com/gophercloud/gophercloud/v2/testhelper"
 	"github.com/spf13/cobra"
 
 	"jakapil-cli/cmd/vpc/testutil"
@@ -50,6 +54,7 @@ func testCommand(t *testing.T) (*cobra.Command, *bytes.Buffer) {
 	fs.Bool("port-security-enabled", true, "")
 	fs.StringSlice("allowed-address-pair", nil, "")
 	fs.Bool("append-aap", false, "")
+	fs.StringArray("fixed-ip", nil, "")
 
 	var out bytes.Buffer
 	cmd.SetOut(&out)
@@ -185,5 +190,88 @@ func TestRunDelete(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "port port-1 deleted") {
 		t.Fatalf("delete output missing confirmation; got:\n%s", out.String())
+	}
+}
+func TestRunCreateFixedIP(t *testing.T) {
+	fakeServer := th.SetupHTTP()
+	t.Cleanup(fakeServer.Teardown)
+
+	fakeServer.Mux.HandleFunc("/v2.0/ports", func(w http.ResponseWriter, r *http.Request) {
+		th.TestMethod(t, r, "POST")
+		th.TestHeader(t, r, "X-Auth-Token", common.TokenID)
+		th.TestJSONRequest(t, r, `{
+    "port": {
+        "network_id": "net-1",
+        "name": "created-port",
+        "fixed_ips": [
+            {"subnet_id": "sub-1", "ip_address": "10.0.0.10"}
+        ]
+    }
+}`)
+		w.Header().Add("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		fmt.Fprint(w, `{
+    "port": {
+        "id": "port-new",
+        "name": "created-port",
+        "network_id": "net-1",
+        "status": "DOWN",
+        "fixed_ips": [
+            {"subnet_id": "sub-1", "ip_address": "10.0.0.10"}
+        ]
+    }
+}`)
+	})
+
+	cmd, out := testCommand(t)
+	if err := cmd.Flags().Set("network-id", "net-1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Flags().Set("name", "created-port"); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Flags().Set("fixed-ip", "subnet=sub-1,ip-address=10.0.0.10"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runCreate(cmd, common.ServiceClient(fakeServer)); err != nil {
+		t.Fatalf("runCreate with --fixed-ip: %v", err)
+	}
+	if !strings.Contains(out.String(), "port-new") {
+		t.Fatalf("create output missing created port; got:\n%s", out.String())
+	}
+}
+
+func TestFixedIPsParsing(t *testing.T) {
+	cmd, _ := testCommand(t)
+	if err := cmd.Flags().Set("fixed-ip", "subnet=sub-1,ip-address=10.0.0.10"); err != nil {
+		t.Fatal(err)
+	}
+	ips, err := fixedIPs(cmd)
+	if err != nil {
+		t.Fatalf("fixedIPs: %v", err)
+	}
+	if len(ips) != 1 || ips[0].SubnetID != "sub-1" || ips[0].IPAddress != "10.0.0.10" {
+		t.Fatalf("unexpected fixedIPs: %+v", ips)
+	}
+}
+
+func TestFixedIPsParsingErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		val  string
+	}{
+		{"missing value", "subnet"},
+		{"unknown key", "foo=bar"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd, _ := testCommand(t)
+			if err := cmd.Flags().Set("fixed-ip", tc.val); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := fixedIPs(cmd); err == nil {
+				t.Fatalf("fixedIPs(%q) succeeded; want an error", tc.val)
+			}
+		})
 	}
 }

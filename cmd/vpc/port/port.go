@@ -82,6 +82,7 @@ The parent network is required (--network-id).`,
 	cmd.Flags().String("device-owner", "", "the type of device that owns this port")
 	cmd.Flags().Bool("port-security-enabled", true, "enable port security")
 	cmd.Flags().StringSlice("allowed-address-pair", nil, "allowed address pair as IP or IP,MAC (repeatable)")
+	cmd.Flags().StringArray("fixed-ip", nil, "fixed IP as subnet=<subnet-id>,ip-address=<ip-address> (repeatable)")
 	return cmd
 }
 

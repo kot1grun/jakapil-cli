@@ -9,6 +9,7 @@ import (
 	"jakapil-cli/cmd/vpc/client"
 	"jakapil-cli/cmd/vpc/network"
 	"jakapil-cli/cmd/vpc/port"
+	"jakapil-cli/cmd/vpc/router"
 	"jakapil-cli/cmd/vpc/subnet"
 	"jakapil-cli/internal/output"
 )
@@ -38,6 +39,7 @@ The following objects are supported: networks and subnets.`,
 		network.NewNetworkCommand(),
 		subnet.NewSubnetCommand(),
 		port.NewPortCommand(),
+		router.NewRouterCommand(),
 	)
 
 	return cmd
