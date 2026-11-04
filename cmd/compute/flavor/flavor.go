@@ -84,6 +84,7 @@ The name (--name), RAM (--ram, MB), vCPUs (--vcpus) and root disk
 	cmd.Flags().Bool("is-public", false, "flag the flavor as available to all projects")
 	cmd.Flags().Int("ephemeral", 0, "amount of ephemeral disk in GB")
 	cmd.Flags().String("description", "", "free-form flavor description")
+	cmd.Flags().Bool("highfreq", false, "request a high-frequency (highfreq) flavor profile")
 	return cmd
 }
 

@@ -37,6 +37,7 @@ func testCommand(t *testing.T) (*cobra.Command, *strings.Builder) {
 	fs.Float64("rxtx-factor", 0, "")
 	fs.Int("ephemeral", 0, "")
 	fs.String("description", "", "")
+	fs.Bool("highfreq", false, "")
 
 	var out strings.Builder
 	cmd.SetOut(&out)
@@ -140,6 +141,53 @@ func TestRunCreateRequiresSizes(t *testing.T) {
 
 	if err := runCreate(cmd, nil); err == nil {
 		t.Fatal("runCreate with zero --ram succeeded; want an error")
+	}
+}
+
+func TestRunCreateHighFreq(t *testing.T) {
+	fakeServer := th.SetupHTTP()
+	t.Cleanup(fakeServer.Teardown)
+
+	fakeServer.Mux.HandleFunc("/flavors", func(w http.ResponseWriter, r *http.Request) {
+		th.TestMethod(t, r, "POST")
+		th.TestHeader(t, r, "X-Auth-Token", fake.TokenID)
+		th.TestJSONRequest(t, r, `{
+    "flavor": {
+        "name": "m1.highfreq",
+        "ram": 4096,
+        "vcpus": 4,
+        "disk": 40,
+        "highfreq": true
+    }
+}`)
+		w.Header().Add("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		fmt.Fprint(w, `{
+    "flavor": {
+        "id": "hf-1",
+        "name": "m1.highfreq",
+        "vcpus": 4,
+        "disk": 40,
+        "ram": 4096,
+        "os-flavor-access:is_public": true,
+        "OS-FLV-EXT-DATA:ephemeral": 0,
+        "highfreq": true
+    }
+}`)
+	})
+
+	cmd, out := testCommand(t)
+	_ = cmd.Flags().Set("name", "m1.highfreq")
+	_ = cmd.Flags().Set("ram", "4096")
+	_ = cmd.Flags().Set("vcpus", "4")
+	_ = cmd.Flags().Set("disk", "40")
+	_ = cmd.Flags().Set("highfreq", "true")
+
+	if err := runCreate(cmd, fake.ServiceClient(fakeServer)); err != nil {
+		t.Fatalf("runCreate with --highfreq: %v", err)
+	}
+	if !strings.Contains(out.String(), "m1.highfreq") {
+		t.Fatalf("create output missing created flavor; got:\n%s", out.String())
 	}
 }
 

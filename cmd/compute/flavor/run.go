@@ -140,11 +140,48 @@ func runCreate(cmd *cobra.Command, c *gophercloud.ServiceClient) error {
 		opts.Description = v
 	}
 
-	flavor, err := flavors.Create(cmd.Context(), c, opts).Extract()
+	flavor, err := flavors.Create(cmd.Context(), c, createOptsBuilder(opts, cmd)).Extract()
 	if err != nil {
 		return err
 	}
 	return render(cmd, flavor)
+}
+
+// highfreqOpts extends flavors.CreateOpts through Go struct embedding to add
+// the Selectel-specific "highfreq" parameter to the created flavor. When
+// highFreq is nil the request body is left byte-for-byte unchanged; otherwise
+// "highfreq" is injected into the "flavor" object. The value is always
+// controlled by the --highfreq flag (which takes no argument).
+type highfreqOpts struct {
+	flavors.CreateOpts
+	highFreq *bool
+}
+
+// ToFlavorCreateMap builds the request body from the embedded flavors.CreateOpts
+// and adds the highfreq field only when it was explicitly requested.
+func (o highfreqOpts) ToFlavorCreateMap() (map[string]any, error) {
+	body, err := o.CreateOpts.ToFlavorCreateMap()
+	if err != nil {
+		return nil, err
+	}
+	if o.highFreq != nil {
+		if flavorMap, ok := body["flavor"].(map[string]any); ok {
+			flavorMap["highfreq"] = *o.highFreq
+		}
+	}
+	return body, nil
+}
+
+// createOptsBuilder returns the flavors.CreateOptsBuilder to feed to
+// flavors.Create. Without --highfreq it returns the plain opts, keeping the
+// body unchanged; with the flag it wraps opts in highfreqOpts to emit
+// "highfreq": true.
+func createOptsBuilder(opts flavors.CreateOpts, cmd *cobra.Command) flavors.CreateOptsBuilder {
+	if !cmd.Flags().Changed("highfreq") {
+		return opts
+	}
+	high := true
+	return highfreqOpts{CreateOpts: opts, highFreq: &high}
 }
 
 // runUpdate applies at least one update option and renders the updated flavor.
