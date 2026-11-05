@@ -57,7 +57,30 @@ const (
 	// computeServiceType is the Gophercloud compute service type as it
 	// appears in the service catalog.
 	computeServiceType = "compute"
+
+	// EnvComputeAPIVersion is the environment variable that overrides the
+	// Nova microversion sent on every compute request. If unset, the client
+	// pins the maximum microversion supported by the selected region
+	// ("latest"), which keeps behavior aligned with each region's capabilities
+	// and is safe because Nova microversions are cumulative (new versions are
+	// only added, never removed). Pinning an explicit value (e.g. "2.93") is
+	// useful for reproducibility or when "latest" rolls in a breaking schema.
+	//
+	// Note: Selectel exposes high-frequency flavor options (highfreq,
+	// dedicated_cpus, vcpus_vendor) only at a recent microversion; older
+	// schemas reject them as unexpected properties.
+	EnvComputeAPIVersion = "JAKAPIL_COMPUTE_API_VERSION"
 )
+
+// resolveComputeAPIVersion returns the Nova microversion to advertise on
+// compute requests. It honors JAKAPIL_COMPUTE_API_VERSION when set, otherwise
+// defers to the server's maximum supported microversion ("latest").
+func resolveComputeAPIVersion() string {
+	if v := os.Getenv(EnvComputeAPIVersion); v != "" {
+		return v
+	}
+	return "latest"
+}
 
 // NewComputeServiceClient builds a gophercloud compute v2 ServiceClient for the
 // Compute service from the given command. Instead of hitting a hard-coded URL,
@@ -84,10 +107,15 @@ func NewComputeServiceClient(cmd *cobra.Command) (*gophercloud.ServiceClient, er
 		return nil, err
 	}
 
-	return openstack.NewComputeV2(provider, gophercloud.EndpointOpts{
+	sc, err := openstack.NewComputeV2(provider, gophercloud.EndpointOpts{
 		Region:       resolveRegion(cmd),
 		Availability: gophercloud.AvailabilityPublic,
 	})
+	if err != nil {
+		return nil, err
+	}
+	sc.Microversion = resolveComputeAPIVersion()
+	return sc, nil
 }
 
 // NewComputeServiceClients authenticates once and returns a compute v2
@@ -123,6 +151,7 @@ func NewComputeServiceClients(cmd *cobra.Command) ([]string, map[string]*gopherc
 		if err != nil {
 			return nil, nil, fmt.Errorf("build compute client for region %q: %w", region, err)
 		}
+		sc.Microversion = resolveComputeAPIVersion()
 		clients[region] = sc
 	}
 	return regions, clients, nil

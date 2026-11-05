@@ -15,7 +15,7 @@ func NewFlavorCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "flavor",
 		Short: "Manage compute flavors",
-		Long:  `Create, list, update and delete OpenStack Nova (compute) flavors.`,
+		Long:  `Create, list, show, update and delete OpenStack Nova (compute) flavors.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			_ = cmd.Help()
 		},
@@ -23,11 +23,29 @@ func NewFlavorCommand() *cobra.Command {
 
 	cmd.AddCommand(
 		newListCommand(),
+		newShowCommand(),
 		newCreateCommand(),
 		newUpdateCommand(),
 		newDeleteCommand(),
 	)
 
+	return cmd
+}
+
+func newShowCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "show <flavor-id>",
+		Short: "Show a compute flavor",
+		Long:  `Show the details of a single compute flavor by its ID.`,
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, err := client.NewComputeServiceClient(cmd)
+			if err != nil {
+				return err
+			}
+			return runShow(cmd, c, args)
+		},
+	}
 	return cmd
 }
 
@@ -81,10 +99,13 @@ The name (--name), RAM (--ram, MB), vCPUs (--vcpus) and root disk
 	cmd.Flags().String("id", "", "unique ID for the flavor (defaults to an auto-generated one)")
 	cmd.Flags().Int("swap", 0, "amount of swap space in MB")
 	cmd.Flags().Float64("rxtx-factor", 0, "network bandwidth factor for the flavor")
-	cmd.Flags().Bool("is-public", false, "flag the flavor as available to all projects")
 	cmd.Flags().Int("ephemeral", 0, "amount of ephemeral disk in GB")
 	cmd.Flags().String("description", "", "free-form flavor description")
 	cmd.Flags().Bool("highfreq", false, "request a high-frequency (highfreq) flavor profile")
+	// Disabled for now: the active API microversion does not accept a
+	// vcpus_vendor property on flavor create. Re-enable together with the
+	// payload wiring in run.go once the API supports it.
+	// cmd.Flags().String("vcpus-vendor", "", "CPU vendor for the flavor, e.g. amd")
 	return cmd
 }
 

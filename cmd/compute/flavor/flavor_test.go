@@ -38,6 +38,8 @@ func testCommand(t *testing.T) (*cobra.Command, *strings.Builder) {
 	fs.Int("ephemeral", 0, "")
 	fs.String("description", "", "")
 	fs.Bool("highfreq", false, "")
+	// Disabled for now (--vcpus-vendor), see flavor.go.
+	// fs.String("vcpus-vendor", "", "")
 
 	var out strings.Builder
 	cmd.SetOut(&out)
@@ -89,6 +91,7 @@ func TestRunCreate(t *testing.T) {
         "ram": 512,
         "vcpus": 1,
         "disk": 1,
+        "os-flavor-access:is_public": false,
         "description": "foo"
     }
 }`)
@@ -144,6 +147,51 @@ func TestRunCreateRequiresSizes(t *testing.T) {
 	}
 }
 
+// TestRunCreateZeroDisk verifies that a flavor with disk = 0 is allowed and the
+// request body carries "disk": 0.
+func TestRunCreateZeroDisk(t *testing.T) {
+	fakeServer := th.SetupHTTP()
+	t.Cleanup(fakeServer.Teardown)
+
+	fakeServer.Mux.HandleFunc("/flavors", func(w http.ResponseWriter, r *http.Request) {
+		th.TestMethod(t, r, "POST")
+		th.TestHeader(t, r, "X-Auth-Token", fake.TokenID)
+		th.TestJSONRequest(t, r, `{
+    "flavor": {
+        "name": "m1.nodisk",
+        "ram": 512,
+        "vcpus": 1,
+        "disk": 0,
+        "os-flavor-access:is_public": false
+    }
+}`)
+		w.Header().Add("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		fmt.Fprint(w, `{
+    "flavor": {
+        "id": "7",
+        "name": "m1.nodisk",
+        "vcpus": 1,
+        "disk": 0,
+        "ram": 512
+    }
+}`)
+	})
+
+	cmd, out := testCommand(t)
+	_ = cmd.Flags().Set("name", "m1.nodisk")
+	_ = cmd.Flags().Set("ram", "512")
+	_ = cmd.Flags().Set("vcpus", "1")
+	_ = cmd.Flags().Set("disk", "0")
+
+	if err := runCreate(cmd, fake.ServiceClient(fakeServer)); err != nil {
+		t.Fatalf("runCreate with disk=0: %v", err)
+	}
+	if !strings.Contains(out.String(), "m1.nodisk") {
+		t.Fatalf("create output missing created flavor; got:\n%s", out.String())
+	}
+}
+
 func TestRunCreateHighFreq(t *testing.T) {
 	fakeServer := th.SetupHTTP()
 	t.Cleanup(fakeServer.Teardown)
@@ -157,7 +205,9 @@ func TestRunCreateHighFreq(t *testing.T) {
         "ram": 4096,
         "vcpus": 4,
         "disk": 40,
-        "highfreq": true
+        "os-flavor-access:is_public": false,
+        "highfreq": true,
+        "dedicated_cpus": true
     }
 }`)
 		w.Header().Add("Content-Type", "application/json")
@@ -188,6 +238,50 @@ func TestRunCreateHighFreq(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "m1.highfreq") {
 		t.Fatalf("create output missing created flavor; got:\n%s", out.String())
+	}
+}
+
+// TestRunCreateHighFreqRequiresDisk verifies that --highfreq mandates an
+// explicitly set --disk.
+func TestRunCreateHighFreqRequiresDisk(t *testing.T) {
+	cmd, _ := testCommand(t)
+	_ = cmd.Flags().Set("name", "m1.highfreq")
+	_ = cmd.Flags().Set("ram", "4096")
+	_ = cmd.Flags().Set("vcpus", "4")
+	_ = cmd.Flags().Set("highfreq", "true")
+
+	if err := runCreate(cmd, nil); err == nil {
+		t.Fatal("runCreate with --highfreq but no --disk succeeded; want an error")
+	}
+}
+
+// TestRunCreateHighFreqDiskTooSmall verifies that --highfreq rejects a disk
+// below the minimum of 4 GB per vCPU (vcpus <= 14).
+func TestRunCreateHighFreqDiskTooSmall(t *testing.T) {
+	cmd, _ := testCommand(t)
+	_ = cmd.Flags().Set("name", "m1.highfreq")
+	_ = cmd.Flags().Set("ram", "4096")
+	_ = cmd.Flags().Set("vcpus", "4")
+	_ = cmd.Flags().Set("disk", "8")
+	_ = cmd.Flags().Set("highfreq", "true")
+
+	if err := runCreate(cmd, nil); err == nil {
+		t.Fatal("runCreate with --highfreq and disk below 4*vcpu succeeded; want an error")
+	}
+}
+
+// TestRunCreateHighFreqLargeVcpusRequiresDisk verifies the 8 GB per vCPU
+// minimum once --vcpus exceeds 14.
+func TestRunCreateHighFreqLargeVcpusRequiresDisk(t *testing.T) {
+	cmd, _ := testCommand(t)
+	_ = cmd.Flags().Set("name", "m1.highfreq")
+	_ = cmd.Flags().Set("ram", "65536")
+	_ = cmd.Flags().Set("vcpus", "16")
+	_ = cmd.Flags().Set("disk", "64")
+	_ = cmd.Flags().Set("highfreq", "true")
+
+	if err := runCreate(cmd, nil); err == nil {
+		t.Fatal("runCreate with --highfreq, 16 vCPU and disk below 8*16 succeeded; want an error")
 	}
 }
 
@@ -228,6 +322,126 @@ func TestRunUpdate(t *testing.T) {
 	}
 }
 
+func TestRunShow(t *testing.T) {
+	fakeServer := th.SetupHTTP()
+	t.Cleanup(fakeServer.Teardown)
+
+	fakeServer.Mux.HandleFunc("/flavors/2", func(w http.ResponseWriter, r *http.Request) {
+		th.TestMethod(t, r, "GET")
+		th.TestHeader(t, r, "X-Auth-Token", fake.TokenID)
+		w.Header().Add("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+    "flavor": {
+        "id": "2",
+        "name": "m1.small",
+        "vcpus": 1,
+        "disk": 20,
+        "ram": 2048,
+        "swap": "",
+        "os-flavor-access:is_public": true,
+        "OS-FLV-EXT-DATA:ephemeral": 0,
+        "description": "small"
+    }
+}`)
+	})
+	fakeServer.Mux.HandleFunc("/flavors/2/os-extra_specs", func(w http.ResponseWriter, r *http.Request) {
+		th.TestMethod(t, r, "GET")
+		th.TestHeader(t, r, "X-Auth-Token", fake.TokenID)
+		w.Header().Add("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+    "extra_specs": {"hw:cpu_policy": "dedicated", "hw:cpu_thread_policy": "isolate"}
+}`)
+	})
+
+	cmd, out := testCommand(t)
+	_ = cmd.Flags().Set("output", "table")
+	if err := runShow(cmd, fake.ServiceClient(fakeServer), []string{"2"}); err != nil {
+		t.Fatalf("runShow: %v", err)
+	}
+	for _, want := range []string{"Parameter", "Value", "Properties", "hw:cpu_policy=dedicated", "hw:cpu_thread_policy=isolate"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("show output missing %q; got:\n%s", want, out.String())
+		}
+	}
+	// The specs must be grouped under a single "Properties" Parameter row: the
+	// line right after it is a continuation cell, not a new key/value pair.
+	lines := strings.Split(out.String(), "\n")
+	for i, l := range lines {
+		if strings.Contains(l, "Properties") {
+			if i+1 >= len(lines) || !strings.Contains(lines[i+1], "hw:cpu_thread_policy=isolate") {
+				t.Fatalf("show output properties not a single newline-separated value; got:\n%s", out.String())
+			}
+		}
+	}
+}
+
+// TestRunShowJSON verifies that the long-form output surfaces the spec data
+// under the "properties" key (like openstackclient) and does not leak the empty
+// gophercloud "extra_specs" field.
+func TestRunShowJSON(t *testing.T) {
+	fakeServer := th.SetupHTTP()
+	t.Cleanup(fakeServer.Teardown)
+
+	fakeServer.Mux.HandleFunc("/flavors/2", func(w http.ResponseWriter, r *http.Request) {
+		th.TestMethod(t, r, "GET")
+		th.TestHeader(t, r, "X-Auth-Token", fake.TokenID)
+		w.Header().Add("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+    "flavor": {
+        "id": "2",
+        "name": "m1.small",
+        "vcpus": 1,
+        "disk": 20,
+        "ram": 2048,
+        "swap": "",
+        "os-flavor-access:is_public": true,
+        "OS-FLV-EXT-DATA:ephemeral": 0,
+        "description": "small"
+    }
+}`)
+	})
+	fakeServer.Mux.HandleFunc("/flavors/2/os-extra_specs", func(w http.ResponseWriter, r *http.Request) {
+		th.TestMethod(t, r, "GET")
+		th.TestHeader(t, r, "X-Auth-Token", fake.TokenID)
+		w.Header().Add("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+    "extra_specs": {"hw:cpu_policy": "dedicated", "hw:cpu_thread_policy": "isolate"}
+}`)
+	})
+
+	cmd, out := testCommand(t)
+	_ = cmd.Flags().Set("output", "json")
+	if err := runShow(cmd, fake.ServiceClient(fakeServer), []string{"2"}); err != nil {
+		t.Fatalf("runShow: %v", err)
+	}
+
+	if !strings.Contains(out.String(), `"properties"`) {
+		t.Fatalf("show json output missing \"properties\" key; got:\n%s", out.String())
+	}
+	if !strings.Contains(out.String(), `"hw:cpu_policy": "dedicated"`) {
+		t.Fatalf("show json output missing property data; got:\n%s", out.String())
+	}
+	if strings.Contains(out.String(), "extra_specs") {
+		t.Fatalf("show json output leaked gophercloud extra_specs; got:\n%s", out.String())
+	}
+}
+
+func TestRunShowNotFound(t *testing.T) {
+	fakeServer := th.SetupHTTP()
+	t.Cleanup(fakeServer.Teardown)
+
+	fakeServer.Mux.HandleFunc("/flavors/999", func(w http.ResponseWriter, r *http.Request) {
+		th.TestMethod(t, r, "GET")
+		th.TestHeader(t, r, "X-Auth-Token", fake.TokenID)
+		w.WriteHeader(http.StatusNotFound)
+		fmt.Fprint(w, `{"itemNotFound": {"message": "Flavor 999 could not be found", "code": 404}}`)
+	})
+
+	cmd, _ := testCommand(t)
+	if err := runShow(cmd, fake.ServiceClient(fakeServer), []string{"999"}); err == nil {
+		t.Fatal("runShow for a missing flavor succeeded; want an error")
+	}
+}
 func TestRunUpdateRequiresDescription(t *testing.T) {
 	cmd, _ := testCommand(t)
 	if err := runUpdate(cmd, nil, []string{"1"}); err == nil {

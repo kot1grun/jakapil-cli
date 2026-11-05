@@ -161,12 +161,132 @@ func PrintTable(cmd *cobra.Command, header []string, rows [][]string) error {
 		_, err := fmt.Fprintln(w, Yellow(w, "No resources found."))
 		return err
 	}
-	text, err := RenderTable(header, rows)
-	if err != nil {
-		return err
+	w := cmd.OutOrStdout()
+	var text string
+	var err error
+	if tableHasMultiline(rows) {
+		// Multi-line cells (values containing '\n') are not representable by
+		// the tview draw used in RenderTable, which allocates exactly two
+		// screen rows per logical row. Route them to the direct renderer.
+		text = renderMultilineTable(header, rows)
+	} else {
+		text, err = RenderTable(header, rows)
+		if err != nil {
+			return err
+		}
 	}
-	_, err = fmt.Fprintln(cmd.OutOrStdout(), text)
+	_, err = fmt.Fprintln(w, text)
 	return err
+}
+
+// tableHasMultiline reports whether any cell spans more than one line.
+func tableHasMultiline(rows [][]string) bool {
+	for _, row := range rows {
+		for _, cell := range row {
+			if strings.Contains(cell, "\n") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// renderMultilineTable draws a bordered table whose cells may contain '\n'
+// line breaks. Column widths and row heights are derived from the longest
+// fragment and the tallest cell respectively. The style mirrors RenderTable's
+// post-processing: double outer frame, thin inner separators.
+func renderMultilineTable(header []string, rows [][]string) string {
+	cols := len(header)
+	splitRow := func(row []string) [][]string {
+		out := make([][]string, cols)
+		for c := 0; c < cols; c++ {
+			if c < len(row) {
+				out[c] = strings.Split(row[c], "\n")
+			}
+		}
+		return out
+	}
+	hdrFrag := splitRow(header)
+	rowsFrag := make([][][]string, len(rows))
+	for r, row := range rows {
+		rowsFrag[r] = splitRow(row)
+	}
+
+	colw := make([]int, cols)
+	tally := func(frag [][]string) {
+		for c := 0; c < cols; c++ {
+			for _, l := range frag[c] {
+				if w := runewidth.StringWidth(l); w > colw[c] {
+					colw[c] = w
+				}
+			}
+		}
+	}
+	tally(hdrFrag)
+	for _, f := range rowsFrag {
+		tally(f)
+	}
+
+	rowH := make([]int, len(rows))
+	for r, f := range rowsFrag {
+		h := 1
+		for c := 0; c < cols; c++ {
+			if len(f[c]) > h {
+				h = len(f[c])
+			}
+		}
+		rowH[r] = h
+	}
+
+	var b strings.Builder
+	pad := func(s string, w int) string {
+		if n := w - runewidth.StringWidth(s); n > 0 {
+			return s + strings.Repeat(" ", n)
+		}
+		return s
+	}
+	rule := func(left, fill, right, mid rune) {
+		b.WriteRune(left)
+		for c := 0; c < cols; c++ {
+			if c > 0 {
+				b.WriteRune(mid)
+			}
+			b.WriteString(strings.Repeat(string(fill), colw[c]+2))
+		}
+		b.WriteRune(right)
+		b.WriteByte('\n')
+	}
+	emit := func(frag [][]string, height int) {
+		for i := 0; i < height; i++ {
+			b.WriteRune('║')
+			for c := 0; c < cols; c++ {
+				if c > 0 {
+					b.WriteRune('│')
+				}
+				var s string
+				if i < len(frag[c]) {
+					s = frag[c][i]
+				}
+				b.WriteByte(' ')
+				b.WriteString(pad(s, colw[c]))
+				b.WriteByte(' ')
+			}
+			b.WriteRune('║')
+			b.WriteByte('\n')
+		}
+	}
+
+	rule('╔', '═', '╗', '╤')
+	emit(hdrFrag, 1)
+	rule('╠', '═', '╣', '╪')
+	for r, f := range rowsFrag {
+		emit(f, rowH[r])
+		if r < len(rows)-1 {
+			rule('╠', '─', '╣', '┼')
+		}
+	}
+	rule('╚', '═', '╝', '╧')
+	return b.String()
 }
 
 // RenderTable builds an aligned plain-text table out of a header row and data
