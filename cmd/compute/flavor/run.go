@@ -274,15 +274,17 @@ func runCreate(cmd *cobra.Command, c *gophercloud.ServiceClient) error {
 // in the sent struct are injected, so a plain create keeps the body
 // byte-for-byte unchanged:
 //
-//   - highFreq (from --highfreq) adds both "highfreq" and its companion
-//     "dedicated_cpus".
+//   - highFreq (from --highfreq) adds the "highfreq" property.
+//   - dedicatedCpus (from --dedicated-vcpus) adds "dedicated_cpus", which is a
+//     separate, optional escalation and no longer implied by --highfreq.
 //
 // vcpusVendor wiring is disabled for the time being: the active API
 // microversion does not accept the vcpus_vendor property on flavor create.
 // See the commented-out code below for the intended behavior.
 type selectelFlavorOpts struct {
 	flavors.CreateOpts
-	highFreq *bool
+	highFreq      *bool
+	dedicatedCPUs *bool
 	// Disabled for now (--vcpus-vendor): re-enable once the API supports it.
 	// vcpusVendor *string
 }
@@ -297,7 +299,9 @@ func (o selectelFlavorOpts) ToFlavorCreateMap() (map[string]any, error) {
 	if flavorMap, ok := body["flavor"].(map[string]any); ok {
 		if o.highFreq != nil {
 			flavorMap["highfreq"] = *o.highFreq
-			flavorMap["dedicated_cpus"] = *o.highFreq
+		}
+		if o.dedicatedCPUs != nil {
+			flavorMap["dedicated_cpus"] = *o.dedicatedCPUs
 		}
 		// Disabled for now (--vcpus-vendor):
 		// if o.vcpusVendor != nil && *o.vcpusVendor != "" {
@@ -313,10 +317,15 @@ func (o selectelFlavorOpts) ToFlavorCreateMap() (map[string]any, error) {
 // so the corresponding Selectel fields are emitted with the request.
 func createOptsBuilder(opts flavors.CreateOpts, cmd *cobra.Command) flavors.CreateOptsBuilder {
 	highfreq, _ := cmd.Flags().GetBool("highfreq")
+	dedicatedCPUs, _ := cmd.Flags().GetBool("dedicated-vcpus")
 
 	var highFreq *bool
 	if cmd.Flags().Changed("highfreq") {
 		highFreq = &highfreq
+	}
+	var dedicated *bool
+	if cmd.Flags().Changed("dedicated-vcpus") {
+		dedicated = &dedicatedCPUs
 	}
 	// Disabled for now: keep reading --vcpus-vendor out of the payload until
 	// the active API microversion accepts vcpus_vendor on flavor create.
@@ -329,10 +338,10 @@ func createOptsBuilder(opts flavors.CreateOpts, cmd *cobra.Command) flavors.Crea
 	// if highFreq == nil && vendor == nil {
 	// 	return opts
 	// }
-	if highFreq == nil {
+	if highFreq == nil && dedicated == nil {
 		return opts
 	}
-	return selectelFlavorOpts{CreateOpts: opts, highFreq: highFreq}
+	return selectelFlavorOpts{CreateOpts: opts, highFreq: highFreq, dedicatedCPUs: dedicated}
 }
 
 // runUpdate applies at least one update option and renders the updated flavor.

@@ -38,6 +38,7 @@ func testCommand(t *testing.T) (*cobra.Command, *strings.Builder) {
 	fs.Int("ephemeral", 0, "")
 	fs.String("description", "", "")
 	fs.Bool("highfreq", false, "")
+	fs.Bool("dedicated-vcpus", false, "")
 	// Disabled for now (--vcpus-vendor), see flavor.go.
 	// fs.String("vcpus-vendor", "", "")
 
@@ -206,8 +207,7 @@ func TestRunCreateHighFreq(t *testing.T) {
         "vcpus": 4,
         "disk": 40,
         "os-flavor-access:is_public": false,
-        "highfreq": true,
-        "dedicated_cpus": true
+        "highfreq": true
     }
 }`)
 		w.Header().Add("Content-Type", "application/json")
@@ -282,6 +282,55 @@ func TestRunCreateHighFreqLargeVcpusRequiresDisk(t *testing.T) {
 
 	if err := runCreate(cmd, nil); err == nil {
 		t.Fatal("runCreate with --highfreq, 16 vCPU and disk below 8*16 succeeded; want an error")
+	}
+}
+
+// TestRunCreateDedicatedCPUs verifies that --dedicated-vcpus is an independent
+// flag: it sends "dedicated_cpus" in the body without implying --highfreq.
+func TestRunCreateDedicatedCPUs(t *testing.T) {
+	fakeServer := th.SetupHTTP()
+	t.Cleanup(fakeServer.Teardown)
+
+	fakeServer.Mux.HandleFunc("/flavors", func(w http.ResponseWriter, r *http.Request) {
+		th.TestMethod(t, r, "POST")
+		th.TestHeader(t, r, "X-Auth-Token", fake.TokenID)
+		th.TestJSONRequest(t, r, `{
+    "flavor": {
+        "name": "m1.dedicated",
+        "ram": 2048,
+        "vcpus": 4,
+        "disk": 20,
+        "os-flavor-access:is_public": false,
+        "dedicated_cpus": true
+    }
+}`)
+		w.Header().Add("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		fmt.Fprint(w, `{
+    "flavor": {
+        "id": "ded-1",
+        "name": "m1.dedicated",
+        "vcpus": 4,
+        "disk": 20,
+        "ram": 2048,
+        "os-flavor-access:is_public": true,
+        "OS-FLV-EXT-DATA:ephemeral": 0
+    }
+}`)
+	})
+
+	cmd, out := testCommand(t)
+	_ = cmd.Flags().Set("name", "m1.dedicated")
+	_ = cmd.Flags().Set("ram", "2048")
+	_ = cmd.Flags().Set("vcpus", "4")
+	_ = cmd.Flags().Set("disk", "20")
+	_ = cmd.Flags().Set("dedicated-vcpus", "true")
+
+	if err := runCreate(cmd, fake.ServiceClient(fakeServer)); err != nil {
+		t.Fatalf("runCreate with --dedicated-vcpus: %v", err)
+	}
+	if !strings.Contains(out.String(), "m1.dedicated") {
+		t.Fatalf("create output missing created flavor; got:\n%s", out.String())
 	}
 }
 

@@ -102,6 +102,7 @@ The name (--name), RAM (--ram, MB), vCPUs (--vcpus) and root disk
 	cmd.Flags().Int("ephemeral", 0, "amount of ephemeral disk in GB")
 	cmd.Flags().String("description", "", "free-form flavor description")
 	cmd.Flags().Bool("highfreq", false, "request a high-frequency (highfreq) flavor profile")
+	cmd.Flags().Bool("dedicated-vcpus", false, "dedicate physical CPU cores to the flavor")
 	// Disabled for now: the active API microversion does not accept a
 	// vcpus_vendor property on flavor create. Re-enable together with the
 	// payload wiring in run.go once the API supports it.
