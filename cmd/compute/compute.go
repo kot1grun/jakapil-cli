@@ -8,6 +8,7 @@ import (
 
 	"jakapil-cli/cmd/compute/client"
 	"jakapil-cli/cmd/compute/flavor"
+	"jakapil-cli/cmd/compute/image"
 	"jakapil-cli/internal/output"
 )
 
@@ -19,7 +20,7 @@ func NewComputeCommand() *cobra.Command {
 		Short: "Manage Selectel Compute (OpenStack Nova) resources",
 		Long: `Manage Selectel Compute (OpenStack Nova) resources.
 
-The following objects are supported: flavors.`,
+The following objects are supported: flavors, images.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			_ = cmd.Help()
 		},
@@ -34,6 +35,7 @@ The following objects are supported: flavors.`,
 
 	cmd.AddCommand(
 		flavor.NewFlavorCommand(),
+		image.NewImageCommand(),
 	)
 
 	return cmd

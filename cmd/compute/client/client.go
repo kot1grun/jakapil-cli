@@ -58,6 +58,10 @@ const (
 	// appears in the service catalog.
 	computeServiceType = "compute"
 
+	// imageServiceType is the Gophercloud image (Glance) service type as it
+	// appears in the service catalog.
+	imageServiceType = "image"
+
 	// EnvComputeAPIVersion is the environment variable that overrides the
 	// Nova microversion sent on every compute request. If unset, the client
 	// pins the maximum microversion supported by the selected region
@@ -116,6 +120,37 @@ func NewComputeServiceClient(cmd *cobra.Command) (*gophercloud.ServiceClient, er
 	}
 	sc.Microversion = resolveComputeAPIVersion()
 	return sc, nil
+}
+
+// NewImageV2ServiceClient builds a gophercloud image v2 ServiceClient for the
+// Glance (image) service from the given command. It shares the discovery flow
+// with NewComputeServiceClient: it authenticates against the Keystone Identity
+// v3 endpoint (--auth-url or $OS_AUTH_URL) with the provided token and resolves
+// the public image endpoint from the returned service catalog, narrowing to the
+// --region / $OS_REGION_NAME region.
+//
+// The token, identity endpoint and region are resolved the same way as for the
+// compute client, so the same persistent compute flags (--token, --auth-url,
+// --region, --debug) drive it.
+func NewImageV2ServiceClient(cmd *cobra.Command) (*gophercloud.ServiceClient, error) {
+	token, identityEndpoint, debug, err := computeCredentials(cmd)
+	if err != nil {
+		return nil, err
+	}
+
+	provider, err := keystone.Authenticate(keystone.Options{
+		IdentityEndpoint: identityEndpoint,
+		Token:            token,
+		Debug:            debug,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return openstack.NewImageV2(provider, gophercloud.EndpointOpts{
+		Region:       resolveRegion(cmd),
+		Availability: gophercloud.AvailabilityPublic,
+	})
 }
 
 // NewComputeServiceClients authenticates once and returns a compute v2
