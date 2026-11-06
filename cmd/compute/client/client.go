@@ -153,6 +153,44 @@ func NewImageV2ServiceClient(cmd *cobra.Command) (*gophercloud.ServiceClient, er
 	})
 }
 
+// NewImageV2ServiceClients authenticates once and returns an image v2
+// ServiceClient for every public region the "image" service advertises in the
+// catalog, together with that region list sorted by name. It backs the
+// "--all-regions" list command.
+func NewImageV2ServiceClients(cmd *cobra.Command) ([]string, map[string]*gophercloud.ServiceClient, error) {
+	token, identityEndpoint, debug, err := computeCredentials(cmd)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	provider, err := keystone.Authenticate(keystone.Options{
+		IdentityEndpoint: identityEndpoint,
+		Token:            token,
+		Debug:            debug,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	regions, err := keystone.RegionsFromProvider(provider, imageServiceType)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	clients := make(map[string]*gophercloud.ServiceClient, len(regions))
+	for _, region := range regions {
+		sc, err := openstack.NewImageV2(provider, gophercloud.EndpointOpts{
+			Region:       region,
+			Availability: gophercloud.AvailabilityPublic,
+		})
+		if err != nil {
+			return nil, nil, fmt.Errorf("build image client for region %q: %w", region, err)
+		}
+		clients[region] = sc
+	}
+	return regions, clients, nil
+}
+
 // NewComputeServiceClients authenticates once and returns a compute v2
 // ServiceClient for every public region the "compute" service advertises in the
 // catalog, together with that region list sorted by name. It backs the

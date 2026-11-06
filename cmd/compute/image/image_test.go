@@ -166,6 +166,71 @@ func TestRunCreateRequiresName(t *testing.T) {
 	}
 }
 
+func TestRunShow(t *testing.T) {
+	fakeServer := th.SetupHTTP()
+	t.Cleanup(fakeServer.Teardown)
+
+	imageID := "2aa8abd3-4f4d-4e99-a744-f0e5730ea101"
+	fakeServer.Mux.HandleFunc("/images/"+imageID, func(w http.ResponseWriter, r *http.Request) {
+		th.TestMethod(t, r, "GET")
+		th.TestHeader(t, r, "X-Auth-Token", fake.TokenID)
+		w.Header().Add("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+    "status": "active",
+    "name": "cirros-0.4.0-x86_64-disk",
+    "tags": [],
+    "container_format": "bare",
+    "created_at": "2015-11-12T13:33:30Z",
+    "disk_format": "qcow2",
+    "updated_at": "2015-11-12T13:33:35Z",
+    "visibility": "private",
+    "id": "2aa8abd3-4f4d-4e99-a744-f0e5730ea101",
+    "size": 13287936,
+    "owner": "41553c2845531ef9daae337c3a741f6b",
+    "min_ram": 0,
+    "min_disk": 0,
+    "os_hash_algo": "sha512",
+    "hw_disk_bus": "virtio",
+    "os_type": "linux",
+    "owner_project_name": "kot1grun"
+}`)
+	})
+
+	cmd, out := testCommand(t)
+	if err := runShow(cmd, fake.ServiceClient(fakeServer), []string{imageID}); err != nil {
+		t.Fatalf("runShow: %v", err)
+	}
+	for _, want := range []string{"cirros-0.4.0-x86_64-disk", imageID, "qcow2"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("show output missing %q; got:\n%s", want, out.String())
+		}
+	}
+	// Extra Glance properties must be surfaced (in YAML they land under a
+	// top-level "properties" key), not silently dropped.
+	for _, want := range []string{"os_hash_algo", "sha512", "hw_disk_bus", "virtio", "owner_project_name", "kot1grun"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("show output missing extra property %q; got:\n%s", want, out.String())
+		}
+	}
+}
+
+func TestRunShowNotFound(t *testing.T) {
+	fakeServer := th.SetupHTTP()
+	t.Cleanup(fakeServer.Teardown)
+
+	imageID := "missing-image-id"
+	fakeServer.Mux.HandleFunc("/images/"+imageID, func(w http.ResponseWriter, r *http.Request) {
+		th.TestMethod(t, r, "GET")
+		w.WriteHeader(http.StatusNotFound)
+		fmt.Fprint(w, `{"error": {"message": "Image not found", "code": 404}}`)
+	})
+
+	cmd, _ := testCommand(t)
+	if err := runShow(cmd, fake.ServiceClient(fakeServer), []string{imageID}); err == nil {
+		t.Fatal("runShow for a missing image succeeded; want an error")
+	}
+}
+
 func TestRunUpdate(t *testing.T) {
 	fakeServer := th.SetupHTTP()
 	t.Cleanup(fakeServer.Teardown)

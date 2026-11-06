@@ -23,11 +23,29 @@ func NewImageCommand() *cobra.Command {
 
 	cmd.AddCommand(
 		newListCommand(),
+		newShowCommand(),
 		newCreateCommand(),
 		newUpdateCommand(),
 		newDeleteCommand(),
 	)
 
+	return cmd
+}
+
+func newShowCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "show <image-id>",
+		Short: "Show a compute image",
+		Long:  `Show the details of a single image by its ID.`,
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, err := client.NewImageV2ServiceClient(cmd)
+			if err != nil {
+				return err
+			}
+			return runShow(cmd, c, args)
+		},
+	}
 	return cmd
 }
 
@@ -37,6 +55,9 @@ func newListCommand() *cobra.Command {
 		Short: "List compute images",
 		Long:  `List the images, optionally filtered by name, status, visibility, owner or size.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if allRegions, _ := cmd.Flags().GetBool(client.FlagAllRegions); allRegions {
+				return runListAllRegions(cmd)
+			}
 			c, err := client.NewImageV2ServiceClient(cmd)
 			if err != nil {
 				return err
@@ -56,6 +77,7 @@ func newListCommand() *cobra.Command {
 	cmd.Flags().String("disk-format", "", "filter by disk format, e.g. qcow2, raw, iso")
 	cmd.Flags().String("container-format", "", "filter by container format, e.g. bare, ovf")
 	cmd.Flags().Bool("hidden", false, "only list hidden images (os_hidden)")
+	cmd.Flags().Bool(client.FlagAllRegions, false, "list images in every region the service advertises instead of --region")
 	return cmd
 }
 

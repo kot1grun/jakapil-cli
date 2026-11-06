@@ -12,6 +12,10 @@ import (
 	"github.com/gophercloud/gophercloud/v2/openstack/image/v2/images"
 	"github.com/gophercloud/gophercloud/v2/pagination"
 	"github.com/spf13/cobra"
+
+	"jakapil-cli/cmd/compute/client"
+	"jakapil-cli/internal/output"
+	"jakapil-cli/internal/parallel"
 )
 
 // runList lists images and renders the result through the --output flag.
@@ -21,6 +25,44 @@ func runList(cmd *cobra.Command, c *gophercloud.ServiceClient) error {
 		return err
 	}
 	return render(cmd, list)
+}
+
+// runShow fetches a single image by its ID and renders it through the --output
+// flag.
+func runShow(cmd *cobra.Command, c *gophercloud.ServiceClient, args []string) error {
+	image, err := images.Get(cmd.Context(), c, args[0]).Extract()
+	if err != nil {
+		return err
+	}
+	return renderImage(cmd, image)
+}
+
+// runListAllRegions lists images in every region the service advertises and
+// renders the aggregated result with a Region column (table) or grouped by
+// region (json/yaml), backed by the --all-regions flag. Regions are queried in
+// parallel with parallel.Regions, since the underlying calls are read-only GETs.
+// A region whose endpoint is unavailable is skipped with a warning on stderr;
+// the remaining regions are still rendered.
+func runListAllRegions(cmd *cobra.Command) error {
+	regions, clients, err := client.NewImageV2ServiceClients(cmd)
+	if err != nil {
+		return err
+	}
+	opts := imageListOpts(cmd)
+
+	results := parallel.Regions(cmd.Context(), regions, func(ctx context.Context, region string) ([][]string, interface{}, error) {
+		list, err := fetchImages(ctx, clients[region], opts)
+		if err != nil {
+			return nil, nil, err
+		}
+		rows := make([][]string, 0, len(list))
+		for _, img := range list {
+			rows = append(rows, imageRow(img))
+		}
+		return rows, list, nil
+	})
+
+	return output.RenderRegionsBestEffort(cmd, imageHeader, results)
 }
 
 // imageListOpts builds the images list options from the list flags.
@@ -107,7 +149,7 @@ func runCreate(cmd *cobra.Command, c *gophercloud.ServiceClient) error {
 	if err != nil {
 		return err
 	}
-	return render(cmd, image)
+	return renderImage(cmd, image)
 }
 
 // imageCreateOpts builds the images.CreateOpts from the create flags and
@@ -161,7 +203,7 @@ func runUpdate(cmd *cobra.Command, c *gophercloud.ServiceClient, args []string) 
 	if err != nil {
 		return err
 	}
-	return render(cmd, image)
+	return renderImage(cmd, image)
 }
 
 // imageUpdateOpts assembles the images.UpdateOpts (a JSON patch document) from
