@@ -86,9 +86,11 @@ func newCreateCommand() *cobra.Command {
 		Use:   "create",
 		Short: "Create an image",
 		Long: `Create a new image record.
-	
+
 The name (--name), container format (--container-format) and disk format
-(--disk-format) are required.`,
+(--disk-format) are required. Pass --file to upload the local image payload
+into Glance right after the record is created, turning it into an "active"
+image in a single step.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c, err := client.NewImageV2ServiceClient(cmd)
 			if err != nil {
@@ -101,6 +103,7 @@ The name (--name), container format (--container-format) and disk format
 	cmd.Flags().String("id", "", "image UUID (defaults to an auto-generated one)")
 	cmd.Flags().String("container-format", "", "container format: bare, ovf, ami, ari or aki (required)")
 	cmd.Flags().String("disk-format", "", "disk format: qcow2, raw, iso, vhd, vmdk, vdi, ami, ari or aki (required)")
+	cmd.Flags().StringP("file", "f", "", "path to a local image file to upload into Glance")
 	cmd.Flags().String("visibility", "", "image visibility: public or private")
 	cmd.Flags().Bool("hidden", false, "hide the image from the default image list (os_hidden)")
 	cmd.Flags().Int("min-disk", 0, "minimum disk space in GB required to boot the image")

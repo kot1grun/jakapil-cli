@@ -6,7 +6,9 @@ package image
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 
@@ -47,9 +49,13 @@ func testCommand(t *testing.T) (*cobra.Command, *strings.Builder) {
 	fs.Bool("protected", false, "")
 	fs.StringToString("property", nil, "")
 	fs.StringArray("remove-property", nil, "")
+	fs.StringP("file", "f", "", "")
 
 	var out strings.Builder
 	cmd.SetOut(&out)
+	// Route progress-bar output (stderr) to a throwaway buffer so tests don't
+	// spam the runner with \r-rewriting progress lines.
+	cmd.SetErr(&strings.Builder{})
 	cmd.SetContext(context.Background())
 	return cmd, &out
 }
@@ -153,6 +159,99 @@ func TestRunCreate(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "cirros-0.4.0-x86_64-disk") {
 		t.Fatalf("create output missing created image; got:\n%s", out.String())
+	}
+}
+
+// TestRunCreateWithFile verifies that --file uploads the local payload into
+// Glance right after the record is created, and that the freshly-loaded image is
+// then rendered.
+func TestRunCreateWithFile(t *testing.T) {
+	fakeServer := th.SetupHTTP()
+	t.Cleanup(fakeServer.Teardown)
+
+	imageID := "2aa8abd3-4f4d-4e99-a744-f0e5730ea101"
+	payload := []byte("fake-qcow2-image-bytes")
+
+	// 1. Create the record (status queued).
+	fakeServer.Mux.HandleFunc("/images", func(w http.ResponseWriter, r *http.Request) {
+		th.TestMethod(t, r, "POST")
+		th.TestHeader(t, r, "X-Auth-Token", fake.TokenID)
+		w.Header().Add("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		fmt.Fprintf(w, `{
+    "status": "queued",
+    "name": "cirros-0.4.0-x86_64-disk",
+    "tags": [],
+    "container_format": "bare",
+    "created_at": "2015-11-12T13:33:30Z",
+    "disk_format": "qcow2",
+    "updated_at": "2015-11-12T13:33:30Z",
+    "visibility": "private",
+    "id": %q,
+    "size": 0,
+    "owner": "",
+    "min_ram": 0,
+    "min_disk": 0
+}`, imageID)
+	})
+
+	// 2. Upload the payload.
+	fakeServer.Mux.HandleFunc("/images/"+imageID+"/file", func(w http.ResponseWriter, r *http.Request) {
+		th.TestMethod(t, r, "PUT")
+		th.TestHeader(t, r, "X-Auth-Token", fake.TokenID)
+		th.TestHeader(t, r, "Content-Type", "application/octet-stream")
+		got, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read upload body: %v", err)
+		}
+		if string(got) != string(payload) {
+			t.Fatalf("upload body = %q; want %q", got, payload)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	// 3. Refresh the image (now active).
+	fakeServer.Mux.HandleFunc("/images/"+imageID, func(w http.ResponseWriter, r *http.Request) {
+		th.TestMethod(t, r, "GET")
+		th.TestHeader(t, r, "X-Auth-Token", fake.TokenID)
+		w.Header().Add("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+    "status": "active",
+    "name": "cirros-0.4.0-x86_64-disk",
+    "tags": [],
+    "container_format": "bare",
+    "created_at": "2015-11-12T13:33:30Z",
+    "disk_format": "qcow2",
+    "updated_at": "2015-11-12T13:33:33Z",
+    "visibility": "private",
+    "id": "`+imageID+`",
+    "size": 22,
+    "owner": "",
+    "min_ram": 0,
+    "min_disk": 0
+}`)
+	})
+
+	tmp := t.TempDir()
+	file := tmp + "/cirros.qcow2"
+	if err := os.WriteFile(file, payload, 0o600); err != nil {
+		t.Fatalf("write temp image file: %v", err)
+	}
+
+	cmd, out := testCommand(t)
+	_ = cmd.Flags().Set("name", "cirros-0.4.0-x86_64-disk")
+	_ = cmd.Flags().Set("container-format", "bare")
+	_ = cmd.Flags().Set("disk-format", "qcow2")
+	_ = cmd.Flags().Set("file", file)
+
+	if err := runCreate(cmd, fake.ServiceClient(fakeServer)); err != nil {
+		t.Fatalf("runCreate --file: %v", err)
+	}
+	if !strings.Contains(out.String(), "active") {
+		t.Fatalf("create --file output missing refreshed 'active' status; got:\n%s", out.String())
+	}
+	if !strings.Contains(out.String(), "cirros-0.4.0-x86_64-disk") {
+		t.Fatalf("create --file output missing image name; got:\n%s", out.String())
 	}
 }
 

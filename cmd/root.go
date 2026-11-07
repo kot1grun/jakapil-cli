@@ -10,10 +10,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	_ "github.com/gophercloud/gophercloud/v2/openstack"
-	_ "github.com/gophercloud/gophercloud/v2/openstack/identity/v3/catalog"
-	_ "github.com/gophercloud/gophercloud/v2/openstack/identity/v3/tokens"
-
 	"jakapil-cli/cmd/authenticate"
 	"jakapil-cli/cmd/compute"
 	"jakapil-cli/cmd/config"

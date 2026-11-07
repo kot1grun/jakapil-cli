@@ -6,11 +6,14 @@ package image
 import (
 	"context"
 	"fmt"
+	"os"
 	"sort"
 
 	"github.com/gophercloud/gophercloud/v2"
+	"github.com/gophercloud/gophercloud/v2/openstack/image/v2/imagedata"
 	"github.com/gophercloud/gophercloud/v2/openstack/image/v2/images"
 	"github.com/gophercloud/gophercloud/v2/pagination"
+	"github.com/schollz/progressbar/v3"
 	"github.com/spf13/cobra"
 
 	"jakapil-cli/cmd/compute/client"
@@ -139,6 +142,9 @@ func fetchImages(ctx context.Context, c *gophercloud.ServiceClient, opts images.
 }
 
 // runCreate creates an image and renders the result through the --output flag.
+// When --file is set, the local image data is uploaded to Glance right after the
+// record is created, and the freshly-loaded image (status "active") is then
+// fetched and rendered.
 func runCreate(cmd *cobra.Command, c *gophercloud.ServiceClient) error {
 	opts, err := imageCreateOpts(cmd)
 	if err != nil {
@@ -149,7 +155,74 @@ func runCreate(cmd *cobra.Command, c *gophercloud.ServiceClient) error {
 	if err != nil {
 		return err
 	}
+
+	if file := mustString(cmd, "file"); file != "" {
+		if err := uploadImageData(cmd.Context(), cmd, c, image, file); err != nil {
+			return err
+		}
+		// Re-fetch to reflect the post-upload status (queued -> saving -> active)
+		// instead of the record's initial "queued" state.
+		image, err = images.Get(cmd.Context(), c, image.ID).Extract()
+		if err != nil {
+			return fmt.Errorf("fetch freshly uploaded image %s: %w", image.ID, err)
+		}
+	}
 	return renderImage(cmd, image)
+}
+
+// uploadImageData uploads a local file as the payload of the given image. The
+// call is long-running for large files, so a progress bar is rendered on the
+// command's stderr (kept separate from stdout so --output json/yaml stays clean).
+func uploadImageData(ctx context.Context, cmd *cobra.Command, c *gophercloud.ServiceClient, img *images.Image, path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("open image file: %w", err)
+	}
+	defer f.Close()
+
+	st, err := f.Stat()
+	if err != nil {
+		return fmt.Errorf("stat image file: %w", err)
+	}
+
+	// The provider HTTP client carries a short total timeout (30s) tuned for
+	// fast discovery calls. Streaming a large image can take far longer, and
+	// http.Client.Timeout would abort it mid-stream with
+	// "context deadline exceeded (Client.Timeout exceeded while awaiting
+	// headers)". Lift the limit for the duration of the upload only.
+	pc := c.ProviderClient
+	savedHTTP := pc.HTTPClient
+	noTimeout := savedHTTP
+	noTimeout.Timeout = 0 // keep Transport/Jar/etc., drop only the total timeout
+	pc.HTTPClient = noTimeout
+	defer func() { pc.HTTPClient = savedHTTP }()
+
+	bar := progressbar.NewOptions64(
+		st.Size(),
+		progressbar.OptionSetDescription("Uploading image data"),
+		progressbar.OptionSetWriter(cmd.ErrOrStderr()),
+		progressbar.OptionShowBytes(true),
+		progressbar.OptionSetWidth(20),
+		progressbar.OptionClearOnFinish(),
+	)
+
+	// NewReader feeds bar.Add(n) on every chunk read from the file, so the bar
+	// tracks real bytes pushed to Glance rather than a fake percentage.
+	// Read has a pointer receiver, hence &reader.
+	reader := progressbar.NewReader(f, bar)
+
+	// The library only renders within Add() once the progress is > 0% (the
+	// "currentPercent > 0" guard), so nothing would be drawn until the first
+	// few KB are read. Render the empty 0% line up front so the bar is visible
+	// from the very start of the upload.
+	if err := bar.RenderBlank(); err != nil {
+		return fmt.Errorf("render progress bar: %w", err)
+	}
+
+	if err := imagedata.Upload(ctx, c, img.ID, &reader).ExtractErr(); err != nil {
+		return fmt.Errorf("upload image data for %s: %w", img.ID, err)
+	}
+	return nil
 }
 
 // imageCreateOpts builds the images.CreateOpts from the create flags and
