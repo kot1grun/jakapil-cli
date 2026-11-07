@@ -25,6 +25,8 @@ func NewImageCommand() *cobra.Command {
 		newListCommand(),
 		newShowCommand(),
 		newCreateCommand(),
+		newUploadCommand(),
+		newDownloadCommand(),
 		newUpdateCommand(),
 		newDeleteCommand(),
 	)
@@ -111,6 +113,59 @@ image in a single step.`,
 	cmd.Flags().Bool("protected", false, "prevent the image from being deleted")
 	cmd.Flags().StringArray("tag", nil, "tag to attach to the image (repeatable)")
 	cmd.Flags().StringToString("property", nil, "custom property as key=value (repeatable)")
+	return cmd
+}
+
+// newUploadCommand returns the "image upload" subcommand that streams a local
+// file into an existing image. Glance accepts data only when the image is in the
+// "queued" state, so upload deals with images produced by create --no-file (or
+// left behind by a failed create --file without wiping the record).
+func newUploadCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "upload <image-id>",
+		Short: "Upload image data to a queued image",
+		Long: `Upload the raw image payload into an existing image record.
+
+The image must be in the "queued" status (for example, one created without
+--file, or left over from an interrupted create --file). After a successful
+upload the image transitions to "active" automatically.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, err := client.NewImageV2ServiceClient(cmd)
+			if err != nil {
+				return err
+			}
+			return runUpload(cmd, c, args)
+		},
+	}
+	cmd.Flags().StringP("file", "f", "", "path to the local image file to upload (required)")
+	return cmd
+}
+
+// newDownloadCommand returns the "image download" subcommand that streams an
+// image's raw payload into a local file (--file) or stdout. A progress bar
+// (determinate when the server reports Content-Length, otherwise an
+// indeterminate spinner) is rendered on stderr.
+func newDownloadCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "download <image-id>",
+		Short: "Download image data to a file",
+		Long: `Stream the raw image payload into a local file (or stdout when --file is
+omitted).
+
+Download progress is shown on stderr, so redirecting stdout to a file (e.g.
+via shell redirection) does not corrupt the output.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, err := client.NewImageV2ServiceClient(cmd)
+			if err != nil {
+				return err
+			}
+			return runDownload(cmd, c, args)
+		},
+	}
+	cmd.Flags().StringP("file", "f", "", "path to save the image payload to (default: stdout)")
+	cmd.Flags().Bool("force", false, "overwrite the target file if it already exists")
 	return cmd
 }
 

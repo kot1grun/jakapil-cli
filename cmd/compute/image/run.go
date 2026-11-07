@@ -6,8 +6,11 @@ package image
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/gophercloud/gophercloud/v2"
 	"github.com/gophercloud/gophercloud/v2/openstack/image/v2/imagedata"
@@ -170,6 +173,21 @@ func runCreate(cmd *cobra.Command, c *gophercloud.ServiceClient) error {
 	return renderImage(cmd, image)
 }
 
+// liftHTTPTimeout temporarily removes the total http.Client.Timeout from the
+// provider HTTP client and returns a restore func to call via defer. The client
+// carries a 30s cap tuned for fast control-plane calls, but Go's
+// http.Client.Timeout bounds the whole request, including reading the response
+// body — far too short for streaming multi-GB image payloads in either
+// direction. Only the timeout is dropped; Transport/Jar/redirects are kept.
+func liftHTTPTimeout(c *gophercloud.ServiceClient) func() {
+	pc := c.ProviderClient
+	saved := pc.HTTPClient
+	noTimeout := saved
+	noTimeout.Timeout = 0
+	pc.HTTPClient = noTimeout
+	return func() { pc.HTTPClient = saved }
+}
+
 // uploadImageData uploads a local file as the payload of the given image. The
 // call is long-running for large files, so a progress bar is rendered on the
 // command's stderr (kept separate from stdout so --output json/yaml stays clean).
@@ -187,15 +205,8 @@ func uploadImageData(ctx context.Context, cmd *cobra.Command, c *gophercloud.Ser
 
 	// The provider HTTP client carries a short total timeout (30s) tuned for
 	// fast discovery calls. Streaming a large image can take far longer, and
-	// http.Client.Timeout would abort it mid-stream with
-	// "context deadline exceeded (Client.Timeout exceeded while awaiting
-	// headers)". Lift the limit for the duration of the upload only.
-	pc := c.ProviderClient
-	savedHTTP := pc.HTTPClient
-	noTimeout := savedHTTP
-	noTimeout.Timeout = 0 // keep Transport/Jar/etc., drop only the total timeout
-	pc.HTTPClient = noTimeout
-	defer func() { pc.HTTPClient = savedHTTP }()
+	// http.Client.Timeout aborts the request mid-stream. Lift it for the upload.
+	defer liftHTTPTimeout(c)()
 
 	bar := progressbar.NewOptions64(
 		st.Size(),
@@ -223,6 +234,106 @@ func uploadImageData(ctx context.Context, cmd *cobra.Command, c *gophercloud.Ser
 		return fmt.Errorf("upload image data for %s: %w", img.ID, err)
 	}
 	return nil
+}
+
+// runDownload streams the raw image payload into the --file target (or stdout
+// when --file is omitted) and renders a download progress bar on stderr.
+func runDownload(cmd *cobra.Command, c *gophercloud.ServiceClient, args []string) error {
+	// http.Client.Timeout covers reading the response body too, so a large image
+	// download can be cut off long after the headers arrive. Lift the limit while
+	// the stream is drained (restored on return by the defer).
+	defer liftHTTPTimeout(c)()
+
+	res := imagedata.Download(cmd.Context(), c, args[0])
+	defer res.Body.Close()
+	if res.Err != nil {
+		return res.Err
+	}
+
+	var w io.Writer = cmd.OutOrStdout()
+	if file := mustString(cmd, "file"); file != "" {
+		// Never clobber an existing file without an explicit --force: a large
+		// download would otherwise silently truncate and destroy its content.
+		if _, err := os.Stat(file); err == nil {
+			force, _ := cmd.Flags().GetBool("force")
+			if !force {
+				return fmt.Errorf("download file %q already exists: remove it or pass --force to overwrite", file)
+			}
+		}
+		f, err := os.Create(file)
+		if err != nil {
+			return fmt.Errorf("create download file %q: %w", file, err)
+		}
+		defer f.Close()
+		w = f
+	}
+
+	if err := streamImageData(cmd, res.Body, res.Header.Get("Content-Length"), w); err != nil {
+		return fmt.Errorf("download image data for %s: %w", args[0], err)
+	}
+	return nil
+}
+
+// streamImageData copies body into w while rendering a progress bar. maximum, when
+// provided by the server via the Content-Length header, yields a determinate
+// bar; otherwise the bar runs in an indeterminate (spinner) mode.
+func streamImageData(cmd *cobra.Command, body io.Reader, contentLength string, w io.Writer) error {
+	max := int64(-1)
+	if cl := strings.TrimSpace(contentLength); cl != "" {
+		if n, err := strconv.ParseInt(cl, 10, 64); err == nil {
+			max = n
+		}
+	}
+
+	bar := progressbar.NewOptions64(
+		max,
+		progressbar.OptionSetDescription("Downloading image data"),
+		progressbar.OptionSetWriter(cmd.ErrOrStderr()),
+		progressbar.OptionShowBytes(true),
+		progressbar.OptionSetWidth(20),
+		progressbar.OptionClearOnFinish(),
+	)
+	// Render the empty bar up front: the library only draws within Add() once
+	// progress is > 0%, so without this nothing appears before the first chunk.
+	if err := bar.RenderBlank(); err != nil {
+		return fmt.Errorf("render progress bar: %w", err)
+	}
+	reader := progressbar.NewReader(body, bar)
+	if _, err := io.Copy(w, &reader); err != nil {
+		return err
+	}
+	return nil
+}
+
+// runUpload uploads local image data into an existing image, which must be in
+// the "queued" state (Glance forbids uploading into an active image). The
+// progress bar and timeout handling are shared with the create --file path.
+func runUpload(cmd *cobra.Command, c *gophercloud.ServiceClient, args []string) error {
+	file := mustString(cmd, "file")
+	if file == "" {
+		return fmt.Errorf("image file is required: pass --file")
+	}
+
+	img, err := images.Get(cmd.Context(), c, args[0]).Extract()
+	if err != nil {
+		return err
+	}
+	if img.Status != images.ImageStatusQueued {
+		return fmt.Errorf("cannot upload data to image %s in status %q: only images in %q can accept data",
+			img.ID, img.Status, images.ImageStatusQueued)
+	}
+
+	if err := uploadImageData(cmd.Context(), cmd, c, img, file); err != nil {
+		return err
+	}
+
+	// Re-fetch to reflect the post-upload status (queued -> saving -> active)
+	// instead of the pre-upload "queued" state.
+	img, err = images.Get(cmd.Context(), c, args[0]).Extract()
+	if err != nil {
+		return fmt.Errorf("fetch freshly uploaded image %s: %w", img.ID, err)
+	}
+	return renderImage(cmd, img)
 }
 
 // imageCreateOpts builds the images.CreateOpts from the create flags and

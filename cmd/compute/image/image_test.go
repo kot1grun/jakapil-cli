@@ -50,6 +50,7 @@ func testCommand(t *testing.T) (*cobra.Command, *strings.Builder) {
 	fs.StringToString("property", nil, "")
 	fs.StringArray("remove-property", nil, "")
 	fs.StringP("file", "f", "", "")
+	fs.Bool("force", false, "")
 
 	var out strings.Builder
 	cmd.SetOut(&out)
@@ -262,6 +263,259 @@ func TestRunCreateRequiresName(t *testing.T) {
 
 	if err := runCreate(cmd, nil); err == nil {
 		t.Fatal("runCreate without --name succeeded; want an error")
+	}
+}
+
+// TestRunUpload uploads data into a queued image and verifies the bar passes
+// the payload and the refreshed "active" image is rendered.
+func TestRunUpload(t *testing.T) {
+	fakeServer := th.SetupHTTP()
+	t.Cleanup(fakeServer.Teardown)
+
+	imageID := "2aa8abd3-4f4d-4e99-a744-f0e5730ea101"
+	payload := []byte("fake-qcow2-image-bytes")
+
+	// 1. Fetch the existing (queued) image.
+	queueCalls := 0
+	fakeServer.Mux.HandleFunc("/images/"+imageID, func(w http.ResponseWriter, r *http.Request) {
+		th.TestMethod(t, r, "GET")
+		th.TestHeader(t, r, "X-Auth-Token", fake.TokenID)
+		queueCalls++
+		w.Header().Add("Content-Type", "application/json")
+		status := "queued"
+		if queueCalls > 1 {
+			status = "active"
+		}
+		fmt.Fprintf(w, `{
+    "status": %q,
+    "name": "cirros-0.4.0-x86_64-disk",
+    "tags": [],
+    "container_format": "bare",
+    "created_at": "2015-11-12T13:33:30Z",
+    "disk_format": "qcow2",
+    "updated_at": "2015-11-12T13:33:35Z",
+    "visibility": "private",
+    "id": %q,
+    "size": 22,
+    "owner": "",
+    "min_ram": 0,
+    "min_disk": 0
+}`, status, imageID)
+	})
+
+	// 2. Upload the payload.
+	fakeServer.Mux.HandleFunc("/images/"+imageID+"/file", func(w http.ResponseWriter, r *http.Request) {
+		th.TestMethod(t, r, "PUT")
+		th.TestHeader(t, r, "X-Auth-Token", fake.TokenID)
+		th.TestHeader(t, r, "Content-Type", "application/octet-stream")
+		got, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read upload body: %v", err)
+		}
+		if string(got) != string(payload) {
+			t.Fatalf("upload body = %q; want %q", got, payload)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	tmp := t.TempDir()
+	file := tmp + "/cirros.qcow2"
+	if err := os.WriteFile(file, payload, 0o600); err != nil {
+		t.Fatalf("write temp image file: %v", err)
+	}
+
+	cmd, out := testCommand(t)
+	_ = cmd.Flags().Set("file", file)
+	if err := runUpload(cmd, fake.ServiceClient(fakeServer), []string{imageID}); err != nil {
+		t.Fatalf("runUpload: %v", err)
+	}
+	if queueCalls != 2 {
+		t.Fatalf("expected 2 GET calls (pre + post), got %d", queueCalls)
+	}
+	if !strings.Contains(out.String(), "active") {
+		t.Fatalf("upload output missing refreshed 'active' status; got:\n%s", out.String())
+	}
+}
+
+func TestRunUploadRequiresFile(t *testing.T) {
+	cmd, _ := testCommand(t)
+	if err := runUpload(cmd, nil, []string{"some-id"}); err == nil {
+		t.Fatal("runUpload without --file succeeded; want an error")
+	}
+}
+
+func TestRunUploadNotQueued(t *testing.T) {
+	fakeServer := th.SetupHTTP()
+	t.Cleanup(fakeServer.Teardown)
+
+	imageID := "2aa8abd3-4f4d-4e99-a744-f0e5730ea101"
+	fakeServer.Mux.HandleFunc("/images/"+imageID, func(w http.ResponseWriter, r *http.Request) {
+		th.TestMethod(t, r, "GET")
+		th.TestHeader(t, r, "X-Auth-Token", fake.TokenID)
+		w.Header().Add("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+    "status": "active",
+    "name": "cirros-0.4.0-x86_64-disk",
+    "container_format": "bare",
+    "disk_format": "qcow2",
+    "visibility": "private",
+    "id": "`+imageID+`",
+    "size": 22,
+    "owner": "",
+    "min_ram": 0,
+    "min_disk": 0
+}`)
+	})
+
+	cmd, _ := testCommand(t)
+	tmp := t.TempDir()
+	file := tmp + "/img.qcow2"
+	if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {
+		t.Fatalf("write temp file: %v", err)
+	}
+	_ = cmd.Flags().Set("file", file)
+
+	err := runUpload(cmd, fake.ServiceClient(fakeServer), []string{imageID})
+	if err == nil {
+		t.Fatal("runUpload on an active image succeeded; want an error")
+	}
+	if !strings.Contains(err.Error(), "only images in") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// TestRunDownloadToFile verifies that the raw payload is streamed into --file
+// and byte-for-byte matches the served body.
+func TestRunDownloadToFile(t *testing.T) {
+	fakeServer := th.SetupHTTP()
+	t.Cleanup(fakeServer.Teardown)
+
+	imageID := "2aa8abd3-4f4d-4e99-a744-f0e5730ea101"
+	payload := []byte("fake-qcow2-download-payload")
+	fakeServer.Mux.HandleFunc("/images/"+imageID+"/file", func(w http.ResponseWriter, r *http.Request) {
+		th.TestMethod(t, r, "GET")
+		th.TestHeader(t, r, "X-Auth-Token", fake.TokenID)
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(payload)))
+		_, _ = w.Write(payload)
+	})
+
+	out := t.TempDir() + "/downloaded.qcow2"
+	cmd, _ := testCommand(t)
+	_ = cmd.Flags().Set("file", out)
+	if err := runDownload(cmd, fake.ServiceClient(fakeServer), []string{imageID}); err != nil {
+		t.Fatalf("runDownload: %v", err)
+	}
+	got, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatalf("read downloaded file: %v", err)
+	}
+	if string(got) != string(payload) {
+		t.Fatalf("downloaded content = %q; want %q", got, payload)
+	}
+}
+
+// TestRunDownloadRefusesOverwrite verifies an existing target file is not
+// silently clobbered without --force.
+func TestRunDownloadRefusesOverwrite(t *testing.T) {
+	fakeServer := th.SetupHTTP()
+	t.Cleanup(fakeServer.Teardown)
+
+	imageID := "2aa8abd3-4f4d-4e99-a744-f0e5730ea101"
+	fakeServer.Mux.HandleFunc("/images/"+imageID+"/file", func(w http.ResponseWriter, r *http.Request) {
+		th.TestMethod(t, r, "GET")
+		th.TestHeader(t, r, "X-Auth-Token", fake.TokenID)
+		_, _ = w.Write([]byte("new-payload"))
+	})
+
+	out := t.TempDir() + "/existing.qcow2"
+	if err := os.WriteFile(out, []byte("old-data"), 0o600); err != nil {
+		t.Fatalf("seed existing file: %v", err)
+	}
+
+	cmd, _ := testCommand(t)
+	_ = cmd.Flags().Set("file", out)
+	err := runDownload(cmd, fake.ServiceClient(fakeServer), []string{imageID})
+	if err == nil {
+		t.Fatal("runDownload over an existing file succeeded; want an error")
+	}
+	if !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// The file must be left untouched.
+	got, _ := os.ReadFile(out)
+	if string(got) != "old-data" {
+		t.Fatalf("existing file was modified: %q", got)
+	}
+}
+
+// TestRunDownloadForceOverwrite verifies --force allows clobbering the target.
+func TestRunDownloadForceOverwrite(t *testing.T) {
+	fakeServer := th.SetupHTTP()
+	t.Cleanup(fakeServer.Teardown)
+
+	imageID := "2aa8abd3-4f4d-4e99-a744-f0e5730ea101"
+	newPayload := []byte("new-payload")
+	fakeServer.Mux.HandleFunc("/images/"+imageID+"/file", func(w http.ResponseWriter, r *http.Request) {
+		th.TestMethod(t, r, "GET")
+		th.TestHeader(t, r, "X-Auth-Token", fake.TokenID)
+		_, _ = w.Write(newPayload)
+	})
+
+	out := t.TempDir() + "/existing.qcow2"
+	if err := os.WriteFile(out, []byte("old-data"), 0o600); err != nil {
+		t.Fatalf("seed existing file: %v", err)
+	}
+
+	cmd, _ := testCommand(t)
+	_ = cmd.Flags().Set("file", out)
+	_ = cmd.Flags().Set("force", "true")
+	if err := runDownload(cmd, fake.ServiceClient(fakeServer), []string{imageID}); err != nil {
+		t.Fatalf("runDownload --force: %v", err)
+	}
+	got, _ := os.ReadFile(out)
+	if string(got) != string(newPayload) {
+		t.Fatalf("downloaded content = %q; want %q", got, newPayload)
+	}
+}
+
+// TestRunDownloadToStdout verifies the payload lands on stdout when --file is
+// omitted (the bar itself goes to stderr, which the test routes to a buffer).
+func TestRunDownloadToStdout(t *testing.T) {
+	fakeServer := th.SetupHTTP()
+	t.Cleanup(fakeServer.Teardown)
+
+	imageID := "2aa8abd3-4f4d-4e99-a744-f0e5730ea101"
+	fakeServer.Mux.HandleFunc("/images/"+imageID+"/file", func(w http.ResponseWriter, r *http.Request) {
+		th.TestMethod(t, r, "GET")
+		th.TestHeader(t, r, "X-Auth-Token", fake.TokenID)
+		_, _ = w.Write([]byte("raw-bytes"))
+	})
+
+	cmd, out := testCommand(t)
+	if err := runDownload(cmd, fake.ServiceClient(fakeServer), []string{imageID}); err != nil {
+		t.Fatalf("runDownload stdout: %v", err)
+	}
+	if out.String() != "raw-bytes" {
+		t.Fatalf("stdout content = %q; want %q", out.String(), "raw-bytes")
+	}
+}
+
+// TestRunDownloadErrorForwards surfaces transport/API errors from Download.
+func TestRunDownloadErrorForwards(t *testing.T) {
+	fakeServer := th.SetupHTTP()
+	t.Cleanup(fakeServer.Teardown)
+
+	imageID := "missing-image-id"
+	fakeServer.Mux.HandleFunc("/images/"+imageID+"/file", func(w http.ResponseWriter, r *http.Request) {
+		th.TestMethod(t, r, "GET")
+		th.TestHeader(t, r, "X-Auth-Token", fake.TokenID)
+		http.NotFound(w, r)
+	})
+
+	cmd, _ := testCommand(t)
+	if err := runDownload(cmd, fake.ServiceClient(fakeServer), []string{imageID}); err == nil {
+		t.Fatal("runDownload on a missing image succeeded; want an error")
 	}
 }
 
