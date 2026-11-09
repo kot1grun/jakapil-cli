@@ -177,7 +177,7 @@ func TestAuthenticateCommandBothScopes(t *testing.T) {
 		"--auth-url", srv.URL+"/v3",
 		"--token-file", tokenFile,
 		"--project-scope",
-		"--acc-scope",
+		"--account-scope",
 	)
 	if err != nil {
 		t.Fatalf("authenticate token issue: %v", err)

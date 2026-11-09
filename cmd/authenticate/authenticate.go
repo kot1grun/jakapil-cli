@@ -46,13 +46,13 @@ const (
 	FlagAskPass = "ask-pass"
 
 	// FlagProjectScope requests a project-scoped token. It is the default scope:
-	// it is implied when neither --project-scope nor --acc-scope is given.
+	// it is implied when neither --project-scope nor --account-scope is given.
 	FlagProjectScope = "project-scope"
 
 	// FlagAccScope requests an account- (domain-) scoped token, which unlocks
-	// account-level management APIs. Passing both --project-scope and --acc-scope
+	// account-level management APIs. Passing both --project-scope and --account-scope
 	// issues both tokens.
-	FlagAccScope = "acc-scope"
+	FlagAccScope = "account-scope"
 
 	// EnvCloud is the environment variable used as a fallback for FlagCloud.
 	EnvCloud = "OS_CLOUD"
@@ -110,7 +110,7 @@ func newTokenCommand() *cobra.Command {
 }
 
 // newIssueTokenCommand returns the "authenticate token issue" command. It
-// issues a project-scoped token by default; --acc-scope requests an
+// issues a project-scoped token by default; --account-scope requests an
 // account-scoped token and both flags together issue both. The token(s) are
 // printed to stdout and stored in the token file (default ` + DefaultTokenFile + `).
 func newIssueTokenCommand() *cobra.Command {
