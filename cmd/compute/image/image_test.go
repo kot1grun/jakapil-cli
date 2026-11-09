@@ -51,6 +51,7 @@ func testCommand(t *testing.T) (*cobra.Command, *strings.Builder) {
 	fs.StringArray("remove-property", nil, "")
 	fs.StringP("file", "f", "", "")
 	fs.Bool("force", false, "")
+	fs.Bool("no-progress", false, "")
 
 	var out strings.Builder
 	cmd.SetOut(&out)
@@ -337,6 +338,54 @@ func TestRunUpload(t *testing.T) {
 	}
 }
 
+// TestRunUploadNoProgress verifies the upload path still streams the payload
+// correctly when the progress bar is suppressed with --no-progress.
+func TestRunUploadNoProgress(t *testing.T) {
+	fakeServer := th.SetupHTTP()
+	t.Cleanup(fakeServer.Teardown)
+
+	imageID := "2aa8abd3-4f4d-4e99-a744-f0e5730ea101"
+	payload := []byte("raw-upload-no-progress")
+
+	fakeServer.Mux.HandleFunc("/images/"+imageID, func(w http.ResponseWriter, r *http.Request) {
+		th.TestMethod(t, r, "GET")
+		th.TestHeader(t, r, "X-Auth-Token", fake.TokenID)
+		w.Header().Add("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+    "status": "queued",
+    "name": "cirros-0.4.0-x86_64-disk",
+    "container_format": "bare",
+    "disk_format": "qcow2",
+    "visibility": "private",
+    "id": "`+imageID+`"
+}`)
+	})
+	fakeServer.Mux.HandleFunc("/images/"+imageID+"/file", func(w http.ResponseWriter, r *http.Request) {
+		th.TestMethod(t, r, "PUT")
+		th.TestHeader(t, r, "X-Auth-Token", fake.TokenID)
+		got, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read upload body: %v", err)
+		}
+		if string(got) != string(payload) {
+			t.Fatalf("upload body = %q; want %q", got, payload)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	tmp := t.TempDir()
+	file := tmp + "/no-progress.qcow2"
+	if err := os.WriteFile(file, payload, 0o600); err != nil {
+		t.Fatalf("write temp image file: %v", err)
+	}
+
+	cmd, _ := testCommand(t)
+	_ = cmd.Flags().Set("file", file)
+	_ = cmd.Flags().Set("no-progress", "true")
+	if err := runUpload(cmd, fake.ServiceClient(fakeServer), []string{imageID}); err != nil {
+		t.Fatalf("runUpload --no-progress: %v", err)
+	}
+}
 func TestRunUploadRequiresFile(t *testing.T) {
 	cmd, _ := testCommand(t)
 	if err := runUpload(cmd, nil, []string{"some-id"}); err == nil {
@@ -412,6 +461,53 @@ func TestRunDownloadToFile(t *testing.T) {
 	}
 	if string(got) != string(payload) {
 		t.Fatalf("downloaded content = %q; want %q", got, payload)
+	}
+}
+
+// TestRunDownloadNoProgress verifies the payload streams correctly with the
+// progress bar disabled via --no-progress.
+func TestRunDownloadNoProgress(t *testing.T) {
+	fakeServer := th.SetupHTTP()
+	t.Cleanup(fakeServer.Teardown)
+
+	imageID := "2aa8abd3-4f4d-4e99-a744-f0e5730ea101"
+	payload := []byte("raw-download-no-progress")
+	fakeServer.Mux.HandleFunc("/images/"+imageID+"/file", func(w http.ResponseWriter, r *http.Request) {
+		th.TestMethod(t, r, "GET")
+		th.TestHeader(t, r, "X-Auth-Token", fake.TokenID)
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(payload)))
+		_, _ = w.Write(payload)
+	})
+
+	out := t.TempDir() + "/no-progress.qcow2"
+	cmd, _ := testCommand(t)
+	_ = cmd.Flags().Set("file", out)
+	_ = cmd.Flags().Set("no-progress", "true")
+	if err := runDownload(cmd, fake.ServiceClient(fakeServer), []string{imageID}); err != nil {
+		t.Fatalf("runDownload --no-progress: %v", err)
+	}
+	got, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatalf("read downloaded file: %v", err)
+	}
+	if string(got) != string(payload) {
+		t.Fatalf("downloaded content = %q; want %q", got, payload)
+	}
+}
+
+// TestProgressEnabled verifies the toggle produced by --no-progress.
+func TestProgressEnabled(t *testing.T) {
+	cmd, _ := testCommand(t)
+
+	_ = cmd.Flags().Set("no-progress", "true")
+	if progressEnabled(cmd) {
+		t.Fatal("progressEnabled = true with --no-progress set; want false")
+	}
+
+	_ = cmd.Flags().Set("no-progress", "false")
+	if !progressEnabled(cmd) {
+		t.Fatal("progressEnabled = false without --no-progress; want true")
 	}
 }
 

@@ -106,6 +106,7 @@ image in a single step.`,
 	cmd.Flags().String("container-format", "", "container format: bare, ovf, ami, ari or aki (required)")
 	cmd.Flags().String("disk-format", "", "disk format: qcow2, raw, iso, vhd, vmdk, vdi, ami, ari or aki (required)")
 	cmd.Flags().StringP("file", "f", "", "path to a local image file to upload into Glance")
+	cmd.Flags().Bool("no-progress", false, "do not render a progress bar while uploading")
 	cmd.Flags().String("visibility", "", "image visibility: public or private")
 	cmd.Flags().Bool("hidden", false, "hide the image from the default image list (os_hidden)")
 	cmd.Flags().Int("min-disk", 0, "minimum disk space in GB required to boot the image")
@@ -139,6 +140,7 @@ upload the image transitions to "active" automatically.`,
 		},
 	}
 	cmd.Flags().StringP("file", "f", "", "path to the local image file to upload (required)")
+	cmd.Flags().Bool("no-progress", false, "do not render a progress bar while uploading")
 	return cmd
 }
 
@@ -166,6 +168,7 @@ via shell redirection) does not corrupt the output.`,
 	}
 	cmd.Flags().StringP("file", "f", "", "path to save the image payload to (default: stdout)")
 	cmd.Flags().Bool("force", false, "overwrite the target file if it already exists")
+	cmd.Flags().Bool("no-progress", false, "do not render a progress bar while downloading")
 	return cmd
 }
 

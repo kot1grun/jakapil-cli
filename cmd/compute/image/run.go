@@ -198,15 +198,28 @@ func uploadImageData(ctx context.Context, cmd *cobra.Command, c *gophercloud.Ser
 	}
 	defer f.Close()
 
-	st, err := f.Stat()
-	if err != nil {
-		return fmt.Errorf("stat image file: %w", err)
-	}
-
 	// The provider HTTP client carries a short total timeout (30s) tuned for
 	// fast discovery calls. Streaming a large image can take far longer, and
 	// http.Client.Timeout aborts the request mid-stream. Lift it for the upload.
 	defer liftHTTPTimeout(c)()
+
+	if err := imagedata.Upload(ctx, c, img.ID, uploadSource(f, cmd)).ExtractErr(); err != nil {
+		return fmt.Errorf("upload image data for %s: %w", img.ID, err)
+	}
+	return nil
+}
+
+// uploadSource returns the reader handed to Glance: it wraps the file in a
+// progress tracker unless progress was disabled with --no-progress.
+func uploadSource(f *os.File, cmd *cobra.Command) io.Reader {
+	if !progressEnabled(cmd) {
+		return f
+	}
+
+	st, err := f.Stat()
+	if err != nil {
+		return f
+	}
 
 	bar := progressbar.NewOptions64(
 		st.Size(),
@@ -216,24 +229,17 @@ func uploadImageData(ctx context.Context, cmd *cobra.Command, c *gophercloud.Ser
 		progressbar.OptionSetWidth(20),
 		progressbar.OptionClearOnFinish(),
 	)
-
 	// NewReader feeds bar.Add(n) on every chunk read from the file, so the bar
 	// tracks real bytes pushed to Glance rather than a fake percentage.
-	// Read has a pointer receiver, hence &reader.
+	// Read has a pointer receiver, hence returning &reader.
 	reader := progressbar.NewReader(f, bar)
 
 	// The library only renders within Add() once the progress is > 0% (the
 	// "currentPercent > 0" guard), so nothing would be drawn until the first
 	// few KB are read. Render the empty 0% line up front so the bar is visible
 	// from the very start of the upload.
-	if err := bar.RenderBlank(); err != nil {
-		return fmt.Errorf("render progress bar: %w", err)
-	}
-
-	if err := imagedata.Upload(ctx, c, img.ID, &reader).ExtractErr(); err != nil {
-		return fmt.Errorf("upload image data for %s: %w", img.ID, err)
-	}
-	return nil
+	_ = bar.RenderBlank()
+	return &reader
 }
 
 // runDownload streams the raw image payload into the --file target (or stdout
@@ -274,10 +280,23 @@ func runDownload(cmd *cobra.Command, c *gophercloud.ServiceClient, args []string
 	return nil
 }
 
+// progressEnabled reports whether stderr renders a progress bar, i.e. the
+// default, unless the caller disabled it with --no-progress.
+func progressEnabled(cmd *cobra.Command) bool {
+	v, _ := cmd.Flags().GetBool("no-progress")
+	return !v
+}
+
 // streamImageData copies body into w while rendering a progress bar. maximum, when
 // provided by the server via the Content-Length header, yields a determinate
-// bar; otherwise the bar runs in an indeterminate (spinner) mode.
+// bar; otherwise the bar runs in an indeterminate (spinner) mode. With
+// --no-progress set, the body is copied through directly.
 func streamImageData(cmd *cobra.Command, body io.Reader, contentLength string, w io.Writer) error {
+	if !progressEnabled(cmd) {
+		_, err := io.Copy(w, body)
+		return err
+	}
+
 	max := int64(-1)
 	if cl := strings.TrimSpace(contentLength); cl != "" {
 		if n, err := strconv.ParseInt(cl, 10, 64); err == nil {
