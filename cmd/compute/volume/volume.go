@@ -15,7 +15,7 @@ func NewVolumeCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "volume",
 		Short: "Manage compute volumes",
-		Long:  `Create, list, show, update and delete OpenStack Cinder (block storage) volumes.`,
+		Long:  `Create, list, show, update and delete OpenStack Cinder (block storage) volumes, and list/show volume types.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			_ = cmd.Help()
 		},
@@ -27,6 +27,7 @@ func NewVolumeCommand() *cobra.Command {
 		newCreateCommand(),
 		newUpdateCommand(),
 		newDeleteCommand(),
+		newTypeCommand(),
 	)
 
 	return cmd
