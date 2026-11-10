@@ -162,8 +162,9 @@ func volumeUpdateOpts(cmd *cobra.Command) (volumes.UpdateOpts, error) {
 	nameChanged := cmd.Flags().Changed("name")
 	descChanged := cmd.Flags().Changed("description")
 	metaChanged := cmd.Flags().Changed("metadata")
-	if !nameChanged && !descChanged && !metaChanged && !hasVolumeFlags(cmd) {
-		return volumes.UpdateOpts{}, errors.New("at least one update option is required: --name, --description, --metadata, --bootable, --non-bootable, --read-only or --read-write")
+	sizeChanged := cmd.Flags().Changed("size")
+	if !nameChanged && !descChanged && !metaChanged && !sizeChanged && !hasVolumeFlags(cmd) {
+		return volumes.UpdateOpts{}, errors.New("at least one update option is required: --name, --description, --metadata, --size, --bootable, --non-bootable, --read-only or --read-write")
 	}
 
 	opts := volumes.UpdateOpts{}
@@ -183,6 +184,19 @@ func volumeUpdateOpts(cmd *cobra.Command) (volumes.UpdateOpts, error) {
 	return opts, nil
 }
 
+// volumeExtendSizeOpts returns the requested new size when the --size flag was
+// given, or 0 otherwise.
+func volumeExtendSizeOpts(cmd *cobra.Command) (newSize int, ok bool, err error) {
+	if !cmd.Flags().Changed("size") {
+		return 0, false, nil
+	}
+	size, _ := cmd.Flags().GetInt("size")
+	if size <= 0 {
+		return 0, false, errors.New("--size must be at least 1 GB")
+	}
+	return size, true, nil
+}
+
 // runUpdate applies at least one update option and renders the updated volume.
 func runUpdate(cmd *cobra.Command, c *gophercloud.ServiceClient, args []string) error {
 	opts, err := volumeUpdateOpts(cmd)
@@ -193,10 +207,31 @@ func runUpdate(cmd *cobra.Command, c *gophercloud.ServiceClient, args []string) 
 	if err != nil {
 		return err
 	}
-
-	volume, err := volumes.Update(cmd.Context(), c, args[0], opts).Extract()
+	newSize, sizeSet, err := volumeExtendSizeOpts(cmd)
 	if err != nil {
 		return err
+	}
+
+	// Pull the updateable fields through a PUT only when one of them is set;
+	// otherwise (size and/or action-only updates) fetch the current volume so it
+	// can be rendered, avoiding a pointless empty PUT.
+	var volume *volumes.Volume
+	if opts.Name != nil || opts.Description != nil || len(opts.Metadata) > 0 {
+		volume, err = volumes.Update(cmd.Context(), c, args[0], opts).Extract()
+		if err != nil {
+			return err
+		}
+	} else {
+		volume, err = volumes.Get(cmd.Context(), c, args[0]).Extract()
+		if err != nil {
+			return err
+		}
+	}
+
+	if sizeSet {
+		if err := volumes.ExtendSize(cmd.Context(), c, args[0], volumes.ExtendSizeOpts{NewSize: newSize}).ExtractErr(); err != nil {
+			return err
+		}
 	}
 
 	if err := applyVolumeActions(cmd.Context(), c, args[0], actionOpts); err != nil {

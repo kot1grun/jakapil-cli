@@ -113,7 +113,7 @@ func newUpdateCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update <volume-id>",
 		Short: "Update a compute volume",
-		Long:  `Update the name, description and/or metadata of an existing volume by its ID. At least one update option is required.`,
+		Long:  `Update the name, description, metadata and/or size of an existing volume by its ID. The size can only be grown; shrinking is not supported. At least one update option is required.`,
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c, err := client.NewBlockStorageV3ServiceClient(cmd)
@@ -126,6 +126,7 @@ func newUpdateCommand() *cobra.Command {
 	cmd.Flags().String("name", "", "new volume name")
 	cmd.Flags().String("description", "", "new volume description")
 	cmd.Flags().StringToString("metadata", nil, "metadata key=value pair to set on the volume (repeatable, replaces the whole metadata set)")
+	cmd.Flags().Int("size", 0, "new volume size in GB (only grow is supported; shrinking is not allowed)")
 	cmd.Flags().Bool("bootable", false, "mark the volume as bootable")
 	cmd.Flags().Bool("non-bootable", false, "mark the volume as non-bootable")
 	cmd.Flags().Bool("read-only", false, "make the volume read-only")

@@ -416,6 +416,59 @@ func TestRunUpdateMetadata(t *testing.T) {
 	}
 }
 
+// TestRunUpdateSize verifies that --size triggers the os-extend action with the
+// requested new size and that the volume is fetched (not PUT) when only the
+// size changes.
+func TestRunUpdateSize(t *testing.T) {
+	fakeServer := th.SetupHTTP()
+	t.Cleanup(fakeServer.Teardown)
+
+	fakeServer.Mux.HandleFunc("/volumes/d32019d3-bc6e-4319-9c1d-6722fc136a22", func(w http.ResponseWriter, r *http.Request) {
+		th.TestMethod(t, r, "GET")
+		th.TestHeader(t, r, "X-Auth-Token", fake.TokenID)
+		w.Header().Add("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `{
+    "volume": {
+        "id": "d32019d3-bc6e-4319-9c1d-6722fc136a22",
+        "name": "vol-001",
+        "status": "available",
+        "size": 100
+    }
+}`)
+	})
+	fakeServer.Mux.HandleFunc("/volumes/d32019d3-bc6e-4319-9c1d-6722fc136a22/action", func(w http.ResponseWriter, r *http.Request) {
+		th.TestMethod(t, r, "POST")
+		th.TestHeader(t, r, "X-Auth-Token", fake.TokenID)
+		th.TestJSONRequest(t, r, `{
+    "os-extend": {
+        "new_size": 150
+    }
+}`)
+		w.WriteHeader(http.StatusAccepted)
+	})
+
+	cmd, out := testCommand(t)
+	_ = cmd.Flags().Set("size", "150")
+
+	if err := runUpdate(cmd, fake.ServiceClient(fakeServer), []string{"d32019d3-bc6e-4319-9c1d-6722fc136a22"}); err != nil {
+		t.Fatalf("runUpdate with size: %v", err)
+	}
+	if !strings.Contains(out.String(), "vol-001") {
+		t.Fatalf("update output missing volume; got:\n%s", out.String())
+	}
+}
+
+// TestRunUpdateSizeRequiresValidSize verifies that --size must be a positive
+// value.
+func TestRunUpdateSizeRequiresValidSize(t *testing.T) {
+	cmd, _ := testCommand(t)
+	_ = cmd.Flags().Set("size", "0")
+	if err := runUpdate(cmd, nil, []string{"d32019d3-bc6e-4319-9c1d-6722fc136a22"}); err == nil {
+		t.Fatal("runUpdate with --size 0 succeeded; want an error")
+	}
+}
+
 // TestRunUpdateActionOnly verifies that an update with only a bootable/read-only
 // action (no name/description) is accepted and still posts the action.
 func TestRunUpdateActionOnly(t *testing.T) {
@@ -424,7 +477,7 @@ func TestRunUpdateActionOnly(t *testing.T) {
 
 	fakeServer.Mux.HandleFunc("/volumes/d32019d3-bc6e-4319-9c1d-6722fc136a22", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
-		case http.MethodPut:
+		case http.MethodGet:
 			th.TestHeader(t, r, "X-Auth-Token", fake.TokenID)
 			w.Header().Add("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
