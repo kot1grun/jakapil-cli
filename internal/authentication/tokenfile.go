@@ -196,6 +196,19 @@ func projectToken(records []StoredToken) (StoredToken, bool) {
 	return StoredToken{}, false
 }
 
+// accountToken returns the token record scoped to the account. Unlike
+// projectToken it does not treat an empty scope as a match: an account-scoped
+// token can only be issued explicitly (authenticate token issue --account-scope)
+// and must not be confused with the project-scoped default.
+func accountToken(records []StoredToken) (StoredToken, bool) {
+	for _, r := range records {
+		if r.Scope == ScopeAccount {
+			return r, true
+		}
+	}
+	return StoredToken{}, false
+}
+
 // LoadToken reads the project token from path. It returns an empty string
 // without an error when the file does not exist or holds no project token.
 func LoadToken(path string) (string, error) {
@@ -254,6 +267,34 @@ func LoadUsableStoredToken() (string, error) {
 	}
 	if !record.ExpiresAt.IsZero() && record.ExpiresAt.Before(time.Now()) {
 		return "", fmt.Errorf("%w at %s: run \"jakapil-cli authenticate token issue\" to renew it",
+			ErrTokenExpired, record.ExpiresAt.Format(time.RFC3339))
+	}
+	return record.Token, nil
+}
+
+// LoadUsableAccountToken returns the account-scoped token stored under the
+// default location, provided it has not expired. It is the counterpart of
+// LoadUsableStoredToken for account-level APIs (such as the Cloud Platform
+// Projects / Resell API). Unlike the project variant it never falls back to an
+// empty scope: only a token explicitly issued with --account-scope is used.
+// It returns an empty string without an error when no account-scoped token is
+// stored, and an error wrapping ErrTokenExpired when the stored account token
+// has already expired.
+func LoadUsableAccountToken() (string, error) {
+	path, err := TokenFilePath("")
+	if err != nil {
+		return "", err
+	}
+	records, err := LoadTokens(path)
+	if err != nil {
+		return "", err
+	}
+	record, ok := accountToken(records)
+	if !ok || record.Token == "" {
+		return "", nil
+	}
+	if !record.ExpiresAt.IsZero() && record.ExpiresAt.Before(time.Now()) {
+		return "", fmt.Errorf("%w at %s: run \"jakapil-cli authenticate token issue --account-scope\" to renew it",
 			ErrTokenExpired, record.ExpiresAt.Format(time.RFC3339))
 	}
 	return record.Token, nil

@@ -393,6 +393,102 @@ func TestLoadUsableStoredTokenExpired(t *testing.T) {
 		t.Fatalf("error = %v, want ErrTokenExpired", err)
 	}
 }
+
+func TestLoadUsableAccountToken(t *testing.T) {
+	// The account loader must return the account-scoped token and never fall
+	// back to a project (or empty-scope) token, mirroring the requirement of
+	// the Cloud Platform Projects API.
+	dir := t.TempDir()
+	old, had := os.LookupEnv("XDG_CONFIG_HOME")
+	os.Setenv("XDG_CONFIG_HOME", dir)
+	t.Cleanup(func() {
+		if had {
+			os.Setenv("XDG_CONFIG_HOME", old)
+		} else {
+			os.Unsetenv("XDG_CONFIG_HOME")
+		}
+	})
+	path, err := TokenFilePath("")
+	if err != nil {
+		t.Fatalf("TokenFilePath: %v", err)
+	}
+
+	future := time.Now().Add(2 * time.Hour).Truncate(time.Second)
+	records := []StoredToken{
+		{Token: "project-token", Scope: ScopeProject, ExpiresAt: future},
+		{Token: "account-token", Scope: ScopeAccount, ExpiresAt: future},
+	}
+	if err := SaveTokens(path, records); err != nil {
+		t.Fatalf("SaveTokens: %v", err)
+	}
+
+	token, err := LoadUsableAccountToken()
+	if err != nil {
+		t.Fatalf("LoadUsableAccountToken: %v", err)
+	}
+	if token != "account-token" {
+		t.Fatalf("token = %q, want account-token", token)
+	}
+}
+
+func TestLoadUsableAccountTokenNoneStored(t *testing.T) {
+	// With only a project token stored, the account loader must report "no
+	// token" rather than silently handing out the project-scoped token.
+	dir := t.TempDir()
+	old, had := os.LookupEnv("XDG_CONFIG_HOME")
+	os.Setenv("XDG_CONFIG_HOME", dir)
+	t.Cleanup(func() {
+		if had {
+			os.Setenv("XDG_CONFIG_HOME", old)
+		} else {
+			os.Unsetenv("XDG_CONFIG_HOME")
+		}
+	})
+	path, err := TokenFilePath("")
+	if err != nil {
+		t.Fatalf("TokenFilePath: %v", err)
+	}
+	if err := SaveTokenRecord(path, StoredToken{Token: "project-token", Scope: ScopeProject}); err != nil {
+		t.Fatalf("SaveTokenRecord: %v", err)
+	}
+
+	token, err := LoadUsableAccountToken()
+	if err != nil {
+		t.Fatalf("LoadUsableAccountToken: %v", err)
+	}
+	if token != "" {
+		t.Fatalf("token = %q, want empty when no account token is stored", token)
+	}
+}
+
+func TestLoadUsableAccountTokenExpired(t *testing.T) {
+	dir := t.TempDir()
+	old, had := os.LookupEnv("XDG_CONFIG_HOME")
+	os.Setenv("XDG_CONFIG_HOME", dir)
+	t.Cleanup(func() {
+		if had {
+			os.Setenv("XDG_CONFIG_HOME", old)
+		} else {
+			os.Unsetenv("XDG_CONFIG_HOME")
+		}
+	})
+	path, err := TokenFilePath("")
+	if err != nil {
+		t.Fatalf("TokenFilePath: %v", err)
+	}
+	past := time.Now().Add(-time.Hour).Truncate(time.Second)
+	if err := SaveTokens(path, []StoredToken{{Token: "old-account-token", Scope: ScopeAccount, ExpiresAt: past}}); err != nil {
+		t.Fatalf("SaveTokens: %v", err)
+	}
+
+	token, err := LoadUsableAccountToken()
+	if token != "" {
+		t.Fatalf("token = %q, want empty for expired account token", token)
+	}
+	if err == nil || !errors.Is(err, ErrTokenExpired) {
+		t.Fatalf("error = %v, want ErrTokenExpired", err)
+	}
+}
 func TestLoadTokensLegacyTwoLine(t *testing.T) {
 	// A pre-YAML file holding "token\nexpiry" loads as a single project record.
 	dir := t.TempDir()

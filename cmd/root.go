@@ -16,6 +16,7 @@ import (
 	"jakapil-cli/cmd/craas"
 	"jakapil-cli/cmd/mks"
 	"jakapil-cli/cmd/onboard"
+	"jakapil-cli/cmd/selproject"
 	"jakapil-cli/cmd/vpc"
 	"jakapil-cli/internal/authentication"
 )
@@ -79,6 +80,9 @@ func init() {
 
 	// Register the compute command tree (compute flavor).
 	rootCmd.AddCommand(compute.NewComputeCommand())
+
+	// Register the selproject command tree (selproject list/create/update/delete).
+	rootCmd.AddCommand(selproject.NewSelProjectCommand())
 
 	// Here you will define your flags and configuration settings.
 	// Cobra supports persistent flags, which, if defined here,
