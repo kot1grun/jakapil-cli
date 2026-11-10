@@ -133,15 +133,24 @@ func volumeCreateOpts(cmd *cobra.Command) (volumes.CreateOpts, error) {
 	return opts, nil
 }
 
-// runCreate creates a volume and renders the created volume.
+// runCreate creates a volume (applying the optional bootable/read-only flags
+// via post-create actions) and renders the created volume.
 func runCreate(cmd *cobra.Command, c *gophercloud.ServiceClient) error {
 	opts, err := volumeCreateOpts(cmd)
+	if err != nil {
+		return err
+	}
+	actionOpts, err := parseVolumeActionOpts(cmd)
 	if err != nil {
 		return err
 	}
 
 	volume, err := volumes.Create(cmd.Context(), c, opts, nil).Extract()
 	if err != nil {
+		return err
+	}
+
+	if err := applyVolumeActions(cmd.Context(), c, volume.ID, actionOpts); err != nil {
 		return err
 	}
 	return renderShow(cmd, volume)
@@ -152,8 +161,8 @@ func runCreate(cmd *cobra.Command, c *gophercloud.ServiceClient) error {
 func volumeUpdateOpts(cmd *cobra.Command) (volumes.UpdateOpts, error) {
 	nameChanged := cmd.Flags().Changed("name")
 	descChanged := cmd.Flags().Changed("description")
-	if !nameChanged && !descChanged {
-		return volumes.UpdateOpts{}, errors.New("at least one update option is required: --name or --description")
+	if !nameChanged && !descChanged && !hasVolumeFlags(cmd) {
+		return volumes.UpdateOpts{}, errors.New("at least one update option is required: --name, --description, --bootable, --non-bootable, --read-only or --read-write")
 	}
 
 	opts := volumes.UpdateOpts{}
@@ -174,12 +183,121 @@ func runUpdate(cmd *cobra.Command, c *gophercloud.ServiceClient, args []string) 
 	if err != nil {
 		return err
 	}
+	actionOpts, err := parseVolumeActionOpts(cmd)
+	if err != nil {
+		return err
+	}
 
 	volume, err := volumes.Update(cmd.Context(), c, args[0], opts).Extract()
 	if err != nil {
 		return err
 	}
+
+	if err := applyVolumeActions(cmd.Context(), c, args[0], actionOpts); err != nil {
+		return err
+	}
 	return renderShow(cmd, volume)
+}
+
+// volumeActionOpts captures whether the bootable and read-only flags request a
+// post-create/post-update action and what value to apply.
+type volumeActionOpts struct {
+	applyBootable bool
+	bootable      bool
+	applyReadOnly bool
+	readOnly      bool
+}
+
+// hasVolumeFlags reports whether any bootable/read-only flag was set on the
+// command. It is used by update to determine whether an action-only update is
+// being requested.
+func hasVolumeFlags(cmd *cobra.Command) bool {
+	applyBootable, _, _ := bootableFlag(cmd)
+	applyReadOnly, _, _ := readOnlyFlag(cmd)
+	return applyBootable || applyReadOnly
+}
+
+// parseVolumeActionOpts inspects the mutually exclusive bootable/read-only
+// flag pairs and returns the actions to apply.
+func parseVolumeActionOpts(cmd *cobra.Command) (volumeActionOpts, error) {
+	var opts volumeActionOpts
+
+	if ok, bootable, err := bootableFlag(cmd); err != nil {
+		return opts, err
+	} else if ok {
+		opts.applyBootable = true
+		opts.bootable = bootable
+	}
+	if ok, readOnly, err := readOnlyFlag(cmd); err != nil {
+		return opts, err
+	} else if ok {
+		opts.applyReadOnly = true
+		opts.readOnly = readOnly
+	}
+	return opts, nil
+}
+
+// bootableFlag resolves the --bootable / --non-bootable pair into (apply, value).
+func bootableFlag(cmd *cobra.Command) (bool, bool, error) {
+	boot := cmd.Flags().Changed("bootable")
+	nonBoot := cmd.Flags().Changed("non-bootable")
+	if boot && nonBoot {
+		return false, false, errors.New("--bootable and --non-bootable are mutually exclusive")
+	}
+	if boot {
+		v, _ := cmd.Flags().GetBool("bootable")
+		return true, v, nil
+	}
+	if nonBoot {
+		return true, false, nil
+	}
+	return false, false, nil
+}
+
+// readOnlyFlag resolves the --read-only / --read-write pair into (apply, readonly).
+func readOnlyFlag(cmd *cobra.Command) (bool, bool, error) {
+	ro := cmd.Flags().Changed("read-only")
+	rw := cmd.Flags().Changed("read-write")
+	if ro && rw {
+		return false, false, errors.New("--read-only and --read-write are mutually exclusive")
+	}
+	if ro {
+		v, _ := cmd.Flags().GetBool("read-only")
+		return true, v, nil
+	}
+	if rw {
+		v, _ := cmd.Flags().GetBool("read-write")
+		return true, !v, nil
+	}
+	return false, false, nil
+}
+
+// applyVolumeActions runs the requested bootable and read-only actions against
+// the given volume.
+func applyVolumeActions(ctx context.Context, c *gophercloud.ServiceClient, id string, opts volumeActionOpts) error {
+	if opts.applyBootable {
+		if err := volumes.SetBootable(ctx, c, id, volumes.BootableOpts{Bootable: opts.bootable}).ExtractErr(); err != nil {
+			return err
+		}
+	}
+	if opts.applyReadOnly {
+		if err := setVolumeReadOnly(ctx, c, id, opts.readOnly); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// setVolumeReadOnly posts the os-update_readonly_flag action to set or clear the
+// read-only attribute on a volume. gophercloud does not expose this action
+// directly, so it is called via the raw block storage client.
+func setVolumeReadOnly(ctx context.Context, c *gophercloud.ServiceClient, id string, readOnly bool) error {
+	body := map[string]any{
+		"os-update_readonly_flag": map[string]any{"readonly": readOnly},
+	}
+	resp, err := c.Post(ctx, c.ServiceURL("volumes", id, "action"), body, nil, &gophercloud.RequestOpts{OkCodes: []int{200}})
+	_, _, err = gophercloud.ParseResponse(resp, err)
+	return err
 }
 
 // runDelete removes a volume by its ID and prints a confirmation line.

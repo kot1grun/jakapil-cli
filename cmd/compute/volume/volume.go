@@ -102,6 +102,10 @@ from an image (--image-ref) or from a backup (--backup-id).`,
 	cmd.Flags().String("image-ref", "", "ID of the image to create a bootable volume from")
 	cmd.Flags().String("backup-id", "", "ID of the backup to create the volume from")
 	cmd.Flags().StringToString("metadata", nil, "metadata key=value pair for the volume (repeatable)")
+	cmd.Flags().Bool("bootable", false, "mark the volume as bootable")
+	cmd.Flags().Bool("non-bootable", false, "mark the volume as non-bootable")
+	cmd.Flags().Bool("read-only", false, "make the volume read-only")
+	cmd.Flags().Bool("read-write", true, "make the volume read-write (default)")
 	return cmd
 }
 
@@ -121,6 +125,10 @@ func newUpdateCommand() *cobra.Command {
 	}
 	cmd.Flags().String("name", "", "new volume name")
 	cmd.Flags().String("description", "", "new volume description")
+	cmd.Flags().Bool("bootable", false, "mark the volume as bootable")
+	cmd.Flags().Bool("non-bootable", false, "mark the volume as non-bootable")
+	cmd.Flags().Bool("read-only", false, "make the volume read-only")
+	cmd.Flags().Bool("read-write", false, "make the volume read-write")
 	return cmd
 }
 
