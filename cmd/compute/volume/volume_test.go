@@ -377,6 +377,45 @@ func TestRunUpdateRequiresOption(t *testing.T) {
 	}
 }
 
+// TestRunUpdateMetadata verifies that --metadata is passed through to the
+// underlying UpdateOpts and included in the request body.
+func TestRunUpdateMetadata(t *testing.T) {
+	fakeServer := th.SetupHTTP()
+	t.Cleanup(fakeServer.Teardown)
+
+	fakeServer.Mux.HandleFunc("/volumes/d32019d3-bc6e-4319-9c1d-6722fc136a22", func(w http.ResponseWriter, r *http.Request) {
+		th.TestMethod(t, r, "PUT")
+		th.TestHeader(t, r, "X-Auth-Token", fake.TokenID)
+		th.TestJSONRequest(t, r, `{
+    "volume": {
+        "metadata": {
+            "color": "blue"
+        }
+    }
+}`)
+		w.Header().Add("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `{
+    "volume": {
+        "id": "d32019d3-bc6e-4319-9c1d-6722fc136a22",
+        "name": "vol-001",
+        "status": "available",
+        "metadata": {"color": "blue"}
+    }
+}`)
+	})
+
+	cmd, out := testCommand(t)
+	_ = cmd.Flags().Set("metadata", "color=blue")
+
+	if err := runUpdate(cmd, fake.ServiceClient(fakeServer), []string{"d32019d3-bc6e-4319-9c1d-6722fc136a22"}); err != nil {
+		t.Fatalf("runUpdate with metadata: %v", err)
+	}
+	if !strings.Contains(out.String(), "color") {
+		t.Fatalf("update output missing metadata; got:\n%s", out.String())
+	}
+}
+
 // TestRunUpdateActionOnly verifies that an update with only a bootable/read-only
 // action (no name/description) is accepted and still posts the action.
 func TestRunUpdateActionOnly(t *testing.T) {

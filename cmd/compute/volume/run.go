@@ -161,8 +161,9 @@ func runCreate(cmd *cobra.Command, c *gophercloud.ServiceClient) error {
 func volumeUpdateOpts(cmd *cobra.Command) (volumes.UpdateOpts, error) {
 	nameChanged := cmd.Flags().Changed("name")
 	descChanged := cmd.Flags().Changed("description")
-	if !nameChanged && !descChanged && !hasVolumeFlags(cmd) {
-		return volumes.UpdateOpts{}, errors.New("at least one update option is required: --name, --description, --bootable, --non-bootable, --read-only or --read-write")
+	metaChanged := cmd.Flags().Changed("metadata")
+	if !nameChanged && !descChanged && !metaChanged && !hasVolumeFlags(cmd) {
+		return volumes.UpdateOpts{}, errors.New("at least one update option is required: --name, --description, --metadata, --bootable, --non-bootable, --read-only or --read-write")
 	}
 
 	opts := volumes.UpdateOpts{}
@@ -173,6 +174,11 @@ func volumeUpdateOpts(cmd *cobra.Command) (volumes.UpdateOpts, error) {
 	if descChanged {
 		desc := mustString(cmd, "description")
 		opts.Description = &desc
+	}
+	if metaChanged {
+		if md, _ := cmd.Flags().GetStringToString("metadata"); len(md) > 0 {
+			opts.Metadata = md
+		}
 	}
 	return opts, nil
 }
