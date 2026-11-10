@@ -62,6 +62,14 @@ const (
 	// appears in the service catalog.
 	imageServiceType = "image"
 
+	// blockStorageServiceType is the canonical Gophercloud block storage
+	// service type. The actual entry in a provider's service catalog is
+	// commonly advertised under one of its aliases (volume, volumev2,
+	// volumev3, block-store), so region discovery scans the whole alias set
+	// instead of relying on this exact string alone. See
+	// blockStorageServiceAliases below.
+	blockStorageServiceType = "block-storage"
+
 	// EnvComputeAPIVersion is the environment variable that overrides the
 	// Nova microversion sent on every compute request. If unset, the client
 	// pins the maximum microversion supported by the selected region
@@ -75,6 +83,13 @@ const (
 	// schemas reject them as unexpected properties.
 	EnvComputeAPIVersion = "JAKAPIL_COMPUTE_API_VERSION"
 )
+
+// blockStorageServiceAliases are the aliases under which the block storage
+// service may appear in the Keystone catalog, as defined by the OpenStack
+// Service Types Authority. gophercloud's openstack.ServiceTypeAliases maps
+// "block-storage" to exactly this set. They are used for region discovery in
+// --all-regions mode, because the catalog entry type varies across providers.
+var blockStorageServiceAliases = []string{"block-storage", "block-store", "volume", "volumev2", "volumev3"}
 
 // resolveComputeAPIVersion returns the Nova microversion to advertise on
 // compute requests. It honors JAKAPIL_COMPUTE_API_VERSION when set, otherwise
@@ -189,6 +204,108 @@ func NewImageV2ServiceClients(cmd *cobra.Command) ([]string, map[string]*gopherc
 		clients[region] = sc
 	}
 	return regions, clients, nil
+}
+
+// NewBlockStorageV3ServiceClient builds a gophercloud block storage v3
+// ServiceClient for the given command. It shares the discovery flow with the
+// other compute clients: it authenticates against the Keystone Identity v3
+// endpoint (--auth-url or $OS_AUTH_URL) with the provided token and resolves
+// the public block storage endpoint from the returned service catalog,
+// narrowing to the --region / $OS_REGION_NAME region.
+//
+// The same persistent compute flags (--token, --auth-url, --region, --debug)
+// drive it, and the token, identity endpoint and region are resolved exactly
+// like for the compute and image clients.
+func NewBlockStorageV3ServiceClient(cmd *cobra.Command) (*gophercloud.ServiceClient, error) {
+	token, identityEndpoint, debug, err := computeCredentials(cmd)
+	if err != nil {
+		return nil, err
+	}
+
+	provider, err := keystone.Authenticate(keystone.Options{
+		IdentityEndpoint: identityEndpoint,
+		Token:            token,
+		Debug:            debug,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return openstack.NewBlockStorageV3(provider, gophercloud.EndpointOpts{
+		Region:       resolveRegion(cmd),
+		Availability: gophercloud.AvailabilityPublic,
+	})
+}
+
+// NewBlockStorageV3ServiceClients authenticates once and returns a block
+// storage v3 ServiceClient for every public region the block storage service
+// advertises in the catalog, together with that region list sorted by name. It
+// backs the "--all-regions" list command.
+//
+// The block storage service is advertised in Selectel catalogs under different
+// type strings ("volumev3", "volume", "block-storage", ...), so region
+// discovery scans the alias set instead of relying on a single type.
+func NewBlockStorageV3ServiceClients(cmd *cobra.Command) ([]string, map[string]*gophercloud.ServiceClient, error) {
+	token, identityEndpoint, debug, err := computeCredentials(cmd)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	provider, err := keystone.Authenticate(keystone.Options{
+		IdentityEndpoint: identityEndpoint,
+		Token:            token,
+		Debug:            debug,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	regions, err := blockStorageRegions(provider)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	clients := make(map[string]*gophercloud.ServiceClient, len(regions))
+	for _, region := range regions {
+		sc, err := openstack.NewBlockStorageV3(provider, gophercloud.EndpointOpts{
+			Region:       region,
+			Availability: gophercloud.AvailabilityPublic,
+		})
+		if err != nil {
+			return nil, nil, fmt.Errorf("build block storage client for region %q: %w", region, err)
+		}
+		clients[region] = sc
+	}
+	return regions, clients, nil
+}
+
+// blockStorageRegions returns the sorted, de-duplicated public regions the
+// block storage service advertises in the provider's catalog. Because the
+// block storage service type can be advertised as "block-storage" or any of its
+// aliases ("volume", "volumev2", "volumev3", "block-store"), it probes each
+// alias and unions the results.
+func blockStorageRegions(provider *gophercloud.ProviderClient) ([]string, error) {
+	seen := make(map[string]bool)
+	var regions []string
+	for _, serviceType := range blockStorageServiceAliases {
+		rs, err := keystone.RegionsFromProvider(provider, serviceType)
+		if err != nil {
+			// Not every catalog entry is advertised under every alias — skip
+			// the ones with no public endpoints and keep probing the rest.
+			continue
+		}
+		for _, region := range rs {
+			if !seen[region] {
+				seen[region] = true
+				regions = append(regions, region)
+			}
+		}
+	}
+
+	if len(regions) == 0 {
+		return nil, fmt.Errorf("no public block storage endpoints found in service catalog")
+	}
+	return regions, nil
 }
 
 // NewComputeServiceClients authenticates once and returns a compute v2
