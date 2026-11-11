@@ -65,6 +65,7 @@ func testCommand(t *testing.T) (*cobra.Command, *strings.Builder) {
 	fs.String("access-ipv6", "", "")
 	fs.String("hostname", "", "")
 	fs.Bool("force", false, "")
+	fs.Bool("hard", false, "")
 
 	var out strings.Builder
 	cmd.SetOut(&out)
@@ -322,5 +323,101 @@ func TestRunListTableOmitsDetailColumns(t *testing.T) {
 		if !strings.Contains(out.String(), kept) {
 			t.Fatalf("list table missing %q; got:\n%s", kept, out.String())
 		}
+	}
+}
+
+// setupAction registers the server /action endpoint responding to the given
+// expected JSON payload with a 202 Accepted status.
+func setupAction(fakeServer th.FakeServer, t *testing.T, payload string) {
+	fakeServer.Mux.HandleFunc("/servers/1234asdf/action", func(w http.ResponseWriter, r *http.Request) {
+		th.TestMethod(t, r, "POST")
+		th.TestHeader(t, r, "X-Auth-Token", fake.TokenID)
+		th.TestJSONRequest(t, r, payload)
+		w.WriteHeader(http.StatusAccepted)
+	})
+}
+
+func TestRunPause(t *testing.T) {
+	fakeServer := th.SetupHTTP()
+	t.Cleanup(fakeServer.Teardown)
+	setupAction(fakeServer, t, `{ "pause": null }`)
+
+	cmd, out := testCommand(t)
+	if err := runPause(cmd, fake.ServiceClient(fakeServer), []string{"1234asdf"}); err != nil {
+		t.Fatalf("runPause: %v", err)
+	}
+	if !strings.Contains(out.String(), "paused") {
+		t.Fatalf("pause output missing confirmation; got:\n%s", out.String())
+	}
+}
+
+func TestRunUnpause(t *testing.T) {
+	fakeServer := th.SetupHTTP()
+	t.Cleanup(fakeServer.Teardown)
+	setupAction(fakeServer, t, `{ "unpause": null }`)
+
+	cmd, out := testCommand(t)
+	if err := runUnpause(cmd, fake.ServiceClient(fakeServer), []string{"1234asdf"}); err != nil {
+		t.Fatalf("runUnpause: %v", err)
+	}
+	if !strings.Contains(out.String(), "unpaused") {
+		t.Fatalf("unpause output missing confirmation; got:\n%s", out.String())
+	}
+}
+
+func TestRunRebootSoft(t *testing.T) {
+	fakeServer := th.SetupHTTP()
+	t.Cleanup(fakeServer.Teardown)
+	setupAction(fakeServer, t, `{ "reboot": { "type": "SOFT" } }`)
+
+	cmd, out := testCommand(t)
+	if err := runReboot(cmd, fake.ServiceClient(fakeServer), []string{"1234asdf"}); err != nil {
+		t.Fatalf("runReboot: %v", err)
+	}
+	if !strings.Contains(out.String(), "rebooted") {
+		t.Fatalf("reboot output missing confirmation; got:\n%s", out.String())
+	}
+}
+
+func TestRunRebootHard(t *testing.T) {
+	fakeServer := th.SetupHTTP()
+	t.Cleanup(fakeServer.Teardown)
+	setupAction(fakeServer, t, `{ "reboot": { "type": "HARD" } }`)
+
+	cmd, out := testCommand(t)
+	_ = cmd.Flags().Set("hard", "true")
+	if err := runReboot(cmd, fake.ServiceClient(fakeServer), []string{"1234asdf"}); err != nil {
+		t.Fatalf("runReboot --hard: %v", err)
+	}
+	if !strings.Contains(out.String(), "HARD") {
+		t.Fatalf("hard reboot output missing method; got:\n%s", out.String())
+	}
+}
+
+func TestRunStop(t *testing.T) {
+	fakeServer := th.SetupHTTP()
+	t.Cleanup(fakeServer.Teardown)
+	setupAction(fakeServer, t, `{ "os-stop": null }`)
+
+	cmd, out := testCommand(t)
+	if err := runStop(cmd, fake.ServiceClient(fakeServer), []string{"1234asdf"}); err != nil {
+		t.Fatalf("runStop: %v", err)
+	}
+	if !strings.Contains(out.String(), "stopped") {
+		t.Fatalf("stop output missing confirmation; got:\n%s", out.String())
+	}
+}
+
+func TestRunStart(t *testing.T) {
+	fakeServer := th.SetupHTTP()
+	t.Cleanup(fakeServer.Teardown)
+	setupAction(fakeServer, t, `{ "os-start": null }`)
+
+	cmd, out := testCommand(t)
+	if err := runStart(cmd, fake.ServiceClient(fakeServer), []string{"1234asdf"}); err != nil {
+		t.Fatalf("runStart: %v", err)
+	}
+	if !strings.Contains(out.String(), "started") {
+		t.Fatalf("start output missing confirmation; got:\n%s", out.String())
 	}
 }

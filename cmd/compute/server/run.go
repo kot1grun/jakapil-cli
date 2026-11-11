@@ -308,6 +308,61 @@ func runDelete(cmd *cobra.Command, c *gophercloud.ServiceClient, args []string) 
 	return nil
 }
 
+// runPause suspends a virtual machine's vCPUs (os-pause) and prints a
+// confirmation line.
+func runPause(cmd *cobra.Command, c *gophercloud.ServiceClient, args []string) error {
+	if err := servers.Pause(cmd.Context(), c, args[0]).ExtractErr(); err != nil {
+		return err
+	}
+	fmt.Fprintf(cmd.OutOrStdout(), "server %s paused\n", args[0])
+	return nil
+}
+
+// runUnpause resumes a paused virtual machine (os-unpause) and prints a
+// confirmation line.
+func runUnpause(cmd *cobra.Command, c *gophercloud.ServiceClient, args []string) error {
+	if err := servers.Unpause(cmd.Context(), c, args[0]).ExtractErr(); err != nil {
+		return err
+	}
+	fmt.Fprintf(cmd.OutOrStdout(), "server %s unpaused\n", args[0])
+	return nil
+}
+
+// runReboot reboots a virtual machine (os-reboot). A soft reboot is used unless
+// the --hard flag is set.
+func runReboot(cmd *cobra.Command, c *gophercloud.ServiceClient, args []string) error {
+	method := servers.SoftReboot
+	if hard, _ := cmd.Flags().GetBool("hard"); hard {
+		method = servers.HardReboot
+	}
+	opts := servers.RebootOpts{Type: method}
+	if err := servers.Reboot(cmd.Context(), c, args[0], opts).ExtractErr(); err != nil {
+		return err
+	}
+	fmt.Fprintf(cmd.OutOrStdout(), "server %s rebooted (%s)\n", args[0], method)
+	return nil
+}
+
+// runStop cleanly shuts down a virtual machine (os-stop) and prints a
+// confirmation line.
+func runStop(cmd *cobra.Command, c *gophercloud.ServiceClient, args []string) error {
+	if err := servers.Stop(cmd.Context(), c, args[0]).ExtractErr(); err != nil {
+		return err
+	}
+	fmt.Fprintf(cmd.OutOrStdout(), "server %s stopped\n", args[0])
+	return nil
+}
+
+// runStart powers on a stopped virtual machine (os-start) and prints a
+// confirmation line.
+func runStart(cmd *cobra.Command, c *gophercloud.ServiceClient, args []string) error {
+	if err := servers.Start(cmd.Context(), c, args[0]).ExtractErr(); err != nil {
+		return err
+	}
+	fmt.Fprintf(cmd.OutOrStdout(), "server %s started\n", args[0])
+	return nil
+}
+
 // mustString reads a string-typed flag value.
 func mustString(cmd *cobra.Command, name string) string {
 	v, _ := cmd.Flags().GetString(name)

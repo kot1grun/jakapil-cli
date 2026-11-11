@@ -34,6 +34,11 @@ an image (operating system). Under the hood this maps to the Compute v2
 		newCreateCommand(),
 		newUpdateCommand(),
 		newDeleteCommand(),
+		newPauseCommand(),
+		newUnpauseCommand(),
+		newRebootCommand(),
+		newStopCommand(),
+		newStartCommand(),
 	)
 
 	return cmd
@@ -167,4 +172,99 @@ func newDeleteCommand() *cobra.Command {
 	}
 	cmd.Flags().Bool("force", false, "force delete (os-forceDelete) even if the server is stuck in BUILD or ERROR")
 	return cmd
+}
+
+// newPauseCommand returns the "pause" action command: suspends the virtual
+// machine's vCPUs and keeps its state in memory (os-pause).
+func newPauseCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "pause <server-id>",
+		Short: "Pause a compute virtual machine",
+		Long:  `Suspend the vCPUs of a virtual machine (os-pause), keeping its state in memory.`,
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, err := client.NewComputeServiceClient(cmd)
+			if err != nil {
+				return err
+			}
+			return runPause(cmd, c, args)
+		},
+	}
+}
+
+// newUnpauseCommand returns the "unpause" action command: resumes a paused
+// virtual machine (os-unpause).
+func newUnpauseCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "unpause <server-id>",
+		Short: "Unpause a compute virtual machine",
+		Long:  `Resume a paused virtual machine (os-unpause).`,
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, err := client.NewComputeServiceClient(cmd)
+			if err != nil {
+				return err
+			}
+			return runUnpause(cmd, c, args)
+		},
+	}
+}
+
+// newRebootCommand returns the "reboot" action command: soft or hard reboot of
+// a virtual machine (os-reboot). Soft is the default.
+func newRebootCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "reboot <server-id>",
+		Short: "Reboot a compute virtual machine",
+		Long: `Reboot a virtual machine (os-reboot).
+
+A soft reboot (default) asks the guest OS to restart under its own procedure; a
+hard reboot (--hard) cuts power at the hypervisor level and restarts the VM.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, err := client.NewComputeServiceClient(cmd)
+			if err != nil {
+				return err
+			}
+			return runReboot(cmd, c, args)
+		},
+	}
+	cmd.Flags().Bool("hard", false, "do a hard reboot (virtual power-cycle) instead of a soft reboot")
+	return cmd
+}
+
+// newStopCommand returns the "stop" action command: cleanly shuts down the
+// virtual machine (os-stop).
+func newStopCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "stop <server-id>",
+		Short: "Stop a compute virtual machine",
+		Long:  `Shut down a virtual machine cleanly (os-stop). The VM state is saved to disk.`,
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, err := client.NewComputeServiceClient(cmd)
+			if err != nil {
+				return err
+			}
+			return runStop(cmd, c, args)
+		},
+	}
+}
+
+// newStartCommand returns the "start" action command: powers on a stopped
+// virtual machine (os-start).
+func newStartCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "start <server-id>",
+		Short: "Start a compute virtual machine",
+		Long:  `Power on a stopped virtual machine (os-start).`,
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, err := client.NewComputeServiceClient(cmd)
+			if err != nil {
+				return err
+			}
+			return runStart(cmd, c, args)
+		},
+	}
 }
