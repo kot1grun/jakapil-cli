@@ -28,6 +28,9 @@
 - Раньше поддерживались только MKS и CRaaS; сейчас добавлены `vpc`, `compute`,
   `selproject`, `authenticate`, `onboard`, `config`. Новые сервисы добавляются
   по мере появления SDK.
+- Объекты внутри `compute`: `flavor`, `image`, `volume` и `vm` (алиасы
+  `virtual-machine`/`server`) — построены на gophercloud compute v2
+  (`openstack/compute/v2/servers`) для list/show/create/update/delete.
 
 ---
 
