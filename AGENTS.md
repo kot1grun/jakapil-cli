@@ -21,6 +21,7 @@
 иерархия команд с общими внутренними пакетами.
 
 ### Закреплённые факты актуального состояния (проверено на текущем коде)
+
 - Заголовок лицензии/автора во всех `.go`: `/* Copyright © 2026 Kot1gruN */`.
 - Комментарии и README дублируются на русском и английском; код-комментарии —
   английские. Отвечать/писать можно на языке пользователя, код комментируется
@@ -74,6 +75,7 @@ bin/                        артефакт сборки (gitignored)
 ```
 
 ### Паттерн команды (важно соблюдать при добавлении новых)
+
 1. `cmd/<service>/<service>.go` — `New<Service>Command() *cobra.Command`:
    - persistent-флаги: `--token/-t` (`$SLT_KS_TOKEN`), `--auth-url/-e`
      (`$OS_AUTH_URL`, дефолт `https://cloud.api.selcloud.ru/identity/v3`),
@@ -95,6 +97,7 @@ bin/                        артефакт сборки (gitignored)
 4. Рендер результатов: `internal/output` (Print / PrintTable / RenderRegionsBestEffort).
 
 ### Внутренние пакеты — что делают
+
 - **`internal/authentication`**: файл токена (по умолчанию
   `~/.config/jakapil-cli/token`, права `0600`), формат YAML со scope
   (`project` / `account`), время выдачи/истечения. `LoadUsableStoredToken()` —
@@ -116,6 +119,7 @@ bin/                        артефакт сборки (gitignored)
 ## 4. HOW: сборка, тесты, проверка
 
 ### Быстрые команды
+
 ```bash
 make build          # go build -o bin/jakapil-cli .
 make test           # go test ./...
@@ -129,18 +133,21 @@ go test ./...
 ```
 
 ### Требуемые инструменты
+
 - Go в версии из `go.mod` (сейчас `go 1.27.2`).
 - **GNU Make** (в Makefile есть не-POSIX конструкции; на macOS ставится через
   `brew install make` как `gmake`).
 - `golangci-lint` необязателен (используется только при `make lint`/`lint-check`).
 
 ### Верификация изменений (минимальная перед сдачей)
+
 1. `go build ./...` — всё компилируется.
 2. `go vet ./...` и, если доступен, `golangci-lint run ./...`.
 3. `go test ./...` — все тесты зелёные.
 4. `gofmt -l .` — не должно быть файлов вне форматирования; `gofmt -w` перед коммитом.
 
 ### Как пишутся тесты здесь (особенность проекта)
+
 - Юнит-тесты на команды живут рядом (например `cmd/selproject/selproject_test.go`)
   и используют **`net/http/httptest`** для мока сервера в том же тесте.
 - `testClient(t)` (см. `selproject_test.go`) строит реальный клиент SDK, но с
@@ -156,6 +163,7 @@ go test ./...
   сохраняют исходную ошибку.
 
 ### Неочевидные трюки и подводные камни
+
 - **Два gophercloud** в зависимостях (v1 и v2) — не путать пути импорта.
   SDK Selectel могут тащить v1, а общий код CLI использует `/v2`.
 - **Endpoint без trailing slash ломает запросы**: URL версии (`.../v1`,
@@ -175,6 +183,7 @@ go test ./...
   `LoadUsableAccountToken` на `LoadUsableStoredToken` для `selproject`.
 
 ### Как проверять вручную
+
 ```bash
 # собрать
 make build
@@ -189,6 +198,7 @@ make build
 # + --debug  для дампа каталога / endpoint
 ./bin/jakapil-cli mks cluster list --region ru-6 --debug
 ```
+
 Подсказка: endpoint'ы Selectel могут отличаться между пулами/регионами — при
 «странных» 403/404 гляди `--debug` вывод и сверяйся с
 `https://docs.selectel.ru/api/urls/` (пул-специфичные хосты вида
@@ -197,6 +207,7 @@ make build
 ---
 
 ## 5. Что делать при добавлении нового сервиса (чек-лист)
+
 1. Убедись, что есть актуальный Go SDK/клиент от Selectel; добавь его в `go.mod`.
 2. Создай `cmd/<service>/<service>.go` с `New<Service>Command()`, persistent-флаги
    по образцу `mks.go`/`vpc.go`, подкоманды — в `cmd/<service>/<object>/`.
@@ -209,5 +220,5 @@ make build
 
 ---
 
-*Обновляй этот файл при добавлении значимых пакетов, команд или изменении
-процесса сборки/проверки.*
+_Обновляй этот файл при добавлении значимых пакетов, команд или изменении
+процесса сборки/проверки._

@@ -18,8 +18,10 @@ import (
 // serverHeader lists the compact columns shown for the table format of the
 // list command. Plain JSON/YAML render the full record, which is verbose for
 // lists; the table keeps only the fields most useful for scanning multiple
-// servers.
-var serverHeader = []string{"ID", "Name", "Status", "Flavor ID", "Image ID", "IPs", "Key Name", "AZ", "Created"}
+// servers. Per-server detail (flavor/image/key name) is intentionally omitted
+// to keep the row narrow enough for typical terminals — it stays available in
+// the json/yaml formats and via "compute vm show".
+var serverHeader = []string{"ID", "Name", "Status", "IPs", "AZ", "Created"}
 
 // serverShowHeader is the two-column header used for a single-server table
 // result (show, create, update). A server is rendered vertically, one parameter
@@ -58,10 +60,7 @@ func serverRow(s servers.Server) []string {
 		s.ID,
 		s.Name,
 		s.Status,
-		resourceID(s.Flavor),
-		resourceID(s.Image),
 		addressString(s.Addresses),
-		s.KeyName,
 		s.AvailabilityZone,
 		formatTime(s.Created),
 	}

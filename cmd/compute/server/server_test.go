@@ -286,3 +286,41 @@ func TestRunDeleteForce(t *testing.T) {
 		t.Fatalf("force-delete output missing confirmation; got:\n%s", out.String())
 	}
 }
+
+// TestRunListTableOmitsDetailColumns verifies the table form of the list
+// command keeps only the narrow columns, leaving the per-server detail
+// (flavor/image ID and key name) out of the terminal-wide grid.
+func TestRunListTableOmitsDetailColumns(t *testing.T) {
+	fakeServer := th.SetupHTTP()
+	t.Cleanup(fakeServer.Teardown)
+
+	fakeServer.Mux.HandleFunc("/servers/detail", func(w http.ResponseWriter, r *http.Request) {
+		th.TestMethod(t, r, "GET")
+		th.TestHeader(t, r, "X-Auth-Token", fake.TokenID)
+		w.Header().Add("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+    "servers": [
+        {"id": "ef079b0c-e610-4dfb-b1aa-b49f07ac48e5", "name": "herp", "status": "ACTIVE",
+         "flavor": {"id": "1"}, "image": {"id": "img-1"}, "key_name": "my-key",
+         "addresses": {"private": [{"addr": "10.0.0.32", "version": 4}]},
+         "created": "2014-09-25T13:10:02Z"}
+    ]
+}`)
+	})
+
+	cmd, out := testCommand(t)
+	_ = cmd.Flags().Set("output", "table")
+	if err := runList(cmd, fake.ServiceClient(fakeServer)); err != nil {
+		t.Fatalf("runList: %v", err)
+	}
+	for _, removed := range []string{"Flavor ID", "Image ID", "Key Name"} {
+		if strings.Contains(out.String(), removed) {
+			t.Fatalf("list table still contains %q; got:\n%s", removed, out.String())
+		}
+	}
+	for _, kept := range []string{"ID", "Name", "Status"} {
+		if !strings.Contains(out.String(), kept) {
+			t.Fatalf("list table missing %q; got:\n%s", kept, out.String())
+		}
+	}
+}
