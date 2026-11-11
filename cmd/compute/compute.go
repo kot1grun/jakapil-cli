@@ -18,8 +18,8 @@ import (
 func NewComputeCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "compute",
-		Short: "Manage Selectel Compute (OpenStack Nova) resources",
-		Long: `Manage Selectel Compute (OpenStack Nova) resources.
+		Short: "Manage Selectel Compute resources",
+		Long: `Manage Selectel Compute and related resources (volumes, images, flavors and so on).
 
 The following objects are supported: flavors, images, volumes.`,
 		Run: func(cmd *cobra.Command, args []string) {
