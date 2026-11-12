@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"jakapil-cli/cmd/vpc/client"
+	"jakapil-cli/cmd/vpc/floatingip"
 	"jakapil-cli/cmd/vpc/network"
 	"jakapil-cli/cmd/vpc/port"
 	"jakapil-cli/cmd/vpc/router"
@@ -40,6 +41,7 @@ The following objects are supported: networks and subnets.`,
 		subnet.NewSubnetCommand(),
 		port.NewPortCommand(),
 		router.NewRouterCommand(),
+		floatingip.NewFloatingIPCommand(),
 	)
 
 	return cmd
