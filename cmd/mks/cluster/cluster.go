@@ -92,6 +92,9 @@ func newListCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if len(clusters) == 0 && output.IsTable(cmd) {
+				return output.PrintListEmpty(cmd, client.EffectiveRegion(cmd, mksClient))
+			}
 			return render(cmd, clusters)
 		},
 	}

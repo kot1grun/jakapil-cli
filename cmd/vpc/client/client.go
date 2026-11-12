@@ -153,6 +153,26 @@ func networkCredentials(cmd *cobra.Command) (token, identityEndpoint string, deb
 	return token, identityEndpoint, debug, nil
 }
 
+// EffectiveRegion returns the region a single-region list actually used: the
+// explicitly selected --region/$OS_REGION_NAME when set, otherwise the region
+// gophercloud resolved from the service catalog (the first public endpoint). It
+// is used to name the region in "No resources found in region <region>" notices
+// even when the user relied on catalog defaulting. When the client does not
+// carry a catalog (plain test clients), it degrades to the generic notice.
+func EffectiveRegion(cmd *cobra.Command, c *gophercloud.ServiceClient) string {
+	if region := resolveRegion(cmd); region != "" {
+		return region
+	}
+	if c == nil || c.ProviderClient == nil {
+		return ""
+	}
+	region, err := keystone.RegionMatchingEndpoint(c.ProviderClient, c.Endpoint)
+	if err != nil {
+		return ""
+	}
+	return region
+}
+
 // resolveRegion returns the target region from the "--region" flag, otherwise
 // from the $OS_REGION_NAME environment variable.
 func resolveRegion(cmd *cobra.Command) string {

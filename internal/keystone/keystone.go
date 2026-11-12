@@ -145,6 +145,43 @@ func RegionsFromProvider(provider *gophercloud.ProviderClient, serviceType strin
 	return regions, nil
 }
 
+// RegionMatchingEndpoint returns the region whose public endpoint URL in the
+// service catalog matches endpoint (trailing slashes ignored). Endpoint URLs are
+// unique across the catalog, so no service type is required. It is used to report
+// which region a service client actually resolved to when none was requested
+// explicitly (gophercloud then uses the first public endpoint from the catalog).
+func RegionMatchingEndpoint(provider *gophercloud.ProviderClient, endpoint string) (string, error) {
+	catalog, err := extractCatalog(provider)
+	if err != nil {
+		return "", err
+	}
+	target := strings.TrimRight(endpoint, "/")
+	for _, entry := range catalog.Entries {
+		for _, ep := range entry.Endpoints {
+			if ep.Region == "" || ep.Interface != string(gophercloud.AvailabilityPublic) {
+				continue
+			}
+			if strings.TrimRight(ep.URL, "/") == target {
+				return ep.Region, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("no public endpoint in the service catalog matches %q", endpoint)
+}
+
+// RegionMatchingEndpointAuthenticated authenticates with o and returns which
+// region's public endpoint matches endpoint. It is the counterpart of
+// RegionMatchingEndpoint for callers that do not retain the authenticated
+// ProviderClient (for example the MKS SDK client, which keeps only the resolved
+// endpoint URL).
+func RegionMatchingEndpointAuthenticated(o Options, endpoint string) (string, error) {
+	provider, err := Authenticate(o)
+	if err != nil {
+		return "", err
+	}
+	return RegionMatchingEndpoint(provider, endpoint)
+}
+
 // DiscoverRegions authenticates against IdentityEndpoint with Token and returns
 // the sorted list of public regions advertised for o.ServiceType in the service
 // catalog. It is the counterpart of DiscoverEndpoint for the --all-regions mode.

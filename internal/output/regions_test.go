@@ -96,8 +96,8 @@ func TestRenderRegionsEmptyRegion(t *testing.T) {
 	if err := RenderRegions(cmd, header, regionRows, grouped); err != nil {
 		t.Fatalf("RenderRegions: %v", err)
 	}
-	if !strings.Contains(warn.String(), "ru-2") || !strings.Contains(warn.String(), "no resources found") {
-		t.Fatalf("expected a per-region empty warning on stderr, got: %q", warn.String())
+	if !strings.Contains(warn.String(), "No resources found in region ru-2") {
+		t.Fatalf("expected a per-region empty notice on stderr, got: %q", warn.String())
 	}
 	// The empty region must not become a table row; only ru-1 renders.
 	if got := strings.Count(out.String(), "ru-1"); got != 1 {

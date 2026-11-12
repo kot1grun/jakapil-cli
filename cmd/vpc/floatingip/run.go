@@ -26,6 +26,9 @@ func runList(cmd *cobra.Command, c *gophercloud.ServiceClient) error {
 	if err != nil {
 		return err
 	}
+	if len(list) == 0 && output.IsTable(cmd) {
+		return output.PrintListEmpty(cmd, client.EffectiveRegion(cmd, c))
+	}
 	return render(cmd, list)
 }
 

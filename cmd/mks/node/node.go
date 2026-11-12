@@ -101,6 +101,9 @@ single nodegroup.`,
 			if err != nil {
 				return err
 			}
+			if len(nodes) == 0 && output.IsTable(cmd) {
+				return output.PrintListEmpty(cmd, client.EffectiveRegion(cmd, mksClient))
+			}
 			return render(cmd, nodes)
 		},
 	}

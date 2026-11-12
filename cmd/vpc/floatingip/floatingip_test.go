@@ -181,6 +181,32 @@ func TestRunDelete(t *testing.T) {
 	}
 }
 
+// TestRunListEmptyRegion verifies that an empty table-mode list names the
+// selected region instead of printing the generic "No resources found." notice.
+func TestRunListEmptyRegion(t *testing.T) {
+	empty := fipResource
+	empty.List = nil
+
+	ts := testutil.Neutron(t, empty)
+	cmd, out := testCommand(t)
+	if err := cmd.Flags().Set("output", "table"); err != nil {
+		t.Fatal(err)
+	}
+	// testCommand registers the flags but not the --region one; resolve it
+	// through the environment so runList sees a concrete region.
+	t.Setenv("OS_REGION_NAME", "ru-6")
+
+	if err := runList(cmd, testutil.NewClient(ts)); err != nil {
+		t.Fatalf("runList (empty): %v", err)
+	}
+	if !strings.Contains(out.String(), "No resources found in region ru-6") {
+		t.Fatalf("empty list missing region notice; got:\n%s", out.String())
+	}
+	if strings.Contains(out.String(), "No resources found.") {
+		t.Fatalf("empty list still used the generic notice; got:\n%s", out.String())
+	}
+}
+
 // TestRunListUsesFloatingIPsTesting drives runList against a raw handler that
 // serves the fixtures shipped in gophercloud's own floatingips/testing package
 // (the exact ListResponse used by the library's tests). It guards against the

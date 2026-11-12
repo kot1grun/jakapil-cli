@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/gophercloud/gophercloud/v2"
 )
 
 // fakeKeystone serves a minimal Identity v3 candidate token lookup (GET
@@ -261,6 +263,108 @@ func TestDiscoverRegions(t *testing.T) {
 			t.Fatal("expected error for missing service type")
 		}
 	})
+}
+
+// authedProvider authenticates against a fake catalog server and returns the
+// ProviderClient its catalog is attached to.
+func authedProvider(t *testing.T, catalog any) *gophercloud.ProviderClient {
+	t.Helper()
+	srv := fakeKeystone(t, catalog)
+	provider, err := Authenticate(Options{
+		IdentityEndpoint: srv.URL + "/v3",
+		Token:            "test-token",
+	})
+	if err != nil {
+		t.Fatalf("Authenticate: %v", err)
+	}
+	return provider
+}
+
+func TestRegionMatchingEndpoint(t *testing.T) {
+	catalog := func() []any {
+		return []any{
+			map[string]any{
+				"type": "managed-kubernetes",
+				"name": "Managed Kubernetes",
+				"id":   "mks-service",
+				"endpoints": []any{
+					map[string]any{"interface": "public", "region": "ru-1", "url": "https://mks.ru-1.examle.net/v1"},
+					map[string]any{"interface": "public", "region": "ru-2", "url": "https://mks.ru-2.examle.net/v1"},
+					// admin endpoint must not be matched even though the region exists.
+					map[string]any{"interface": "admin", "region": "ru-1", "url": "https://mks-admin.ru-1.examle.net/v1"},
+					// non-regional endpoint (e.g. CRaaS-style) must be skipped.
+					map[string]any{"interface": "public", "region": "", "url": "https://cr.selcloud.ru/api/v1"},
+				},
+			},
+			map[string]any{
+				"type": "compute",
+				"name": "Compute",
+				"id":   "compute-service",
+				"endpoints": []any{
+					map[string]any{"interface": "public", "region": "ru-1", "url": "https://compute.ru-1.examle.net/v2.1"},
+				},
+			},
+		}
+	}
+
+	provider := authedProvider(t, catalog())
+
+	t.Run("matches region by endpoint regardless of service type", func(t *testing.T) {
+		got, err := RegionMatchingEndpoint(provider, "https://mks.ru-2.examle.net/v1")
+		if err != nil {
+			t.Fatalf("RegionMatchingEndpoint: %v", err)
+		}
+		if got != "ru-2" {
+			t.Fatalf("region = %q, want %q", got, "ru-2")
+		}
+	})
+
+	t.Run("ignores a trailing slash on the endpoint", func(t *testing.T) {
+		got, err := RegionMatchingEndpoint(provider, "https://compute.ru-1.examle.net/v2.1/")
+		if err != nil {
+			t.Fatalf("RegionMatchingEndpoint: %v", err)
+		}
+		if got != "ru-1" {
+			t.Fatalf("region = %q, want %q", got, "ru-1")
+		}
+	})
+
+	t.Run("errors on a non-public endpoint", func(t *testing.T) {
+		if _, err := RegionMatchingEndpoint(provider, "https://mks-admin.ru-1.examle.net/v1"); err == nil {
+			t.Fatal("expected error when matching an admin endpoint")
+		}
+	})
+
+	t.Run("errors on an unknown endpoint", func(t *testing.T) {
+		if _, err := RegionMatchingEndpoint(provider, "https://does-not-exist.example/v1"); err == nil {
+			t.Fatal("expected error when no catalog endpoint matches")
+		}
+	})
+}
+
+func TestRegionMatchingEndpointAuthenticated(t *testing.T) {
+	catalog := []any{
+		map[string]any{
+			"type": "managed-kubernetes",
+			"name": "Managed Kubernetes",
+			"id":   "mks-service",
+			"endpoints": []any{
+				map[string]any{"interface": "public", "region": "ru-3", "url": "https://mks.ru-3.examle.net/v1"},
+			},
+		},
+	}
+	srv := fakeKeystone(t, catalog)
+
+	got, err := RegionMatchingEndpointAuthenticated(Options{
+		IdentityEndpoint: srv.URL + "/v3",
+		Token:            "test-token",
+	}, "https://mks.ru-3.examle.net/v1")
+	if err != nil {
+		t.Fatalf("RegionMatchingEndpointAuthenticated: %v", err)
+	}
+	if got != "ru-3" {
+		t.Fatalf("region = %q, want %q", got, "ru-3")
+	}
 }
 
 func TestDiscoverEndpointDebugOutput(t *testing.T) {

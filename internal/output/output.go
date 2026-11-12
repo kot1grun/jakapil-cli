@@ -157,9 +157,7 @@ func PrintTable(cmd *cobra.Command, header []string, rows [][]string) error {
 		// A header-only table carries no information for a human reader, so a
 		// plain notice is more useful. Long-form formats (json/yaml) keep the
 		// empty collection untouched and never reach this branch.
-		w := cmd.OutOrStdout()
-		_, err := fmt.Fprintln(w, Yellow(w, "No resources found."))
-		return err
+		return PrintListEmpty(cmd, "")
 	}
 	w := cmd.OutOrStdout()
 	var text string
@@ -176,6 +174,21 @@ func PrintTable(cmd *cobra.Command, header []string, rows [][]string) error {
 		}
 	}
 	_, err = fmt.Fprintln(w, text)
+	return err
+}
+
+// PrintListEmpty writes a plain "No resources found." notice to the command
+// output. When region is non-empty it names the region instead, so region-aware
+// listings (a --region flag or the per-region fan-out) tell the reader exactly
+// where nothing was found: "No resources found in region <region>". The notice
+// is highlighted the same way PrintTable's empty branch is.
+func PrintListEmpty(cmd *cobra.Command, region string) error {
+	w := cmd.OutOrStdout()
+	msg := "No resources found."
+	if region != "" {
+		msg = "No resources found in region " + region
+	}
+	_, err := fmt.Fprintln(w, Yellow(w, msg))
 	return err
 }
 

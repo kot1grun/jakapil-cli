@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	v1 "github.com/selectel/mks-go/pkg/v1"
 	"github.com/spf13/cobra"
 )
 
@@ -124,6 +125,43 @@ func mksCommand() *cobra.Command {
 	cmd.Flags().String(FlagRegion, "", "")
 	cmd.Flags().Bool(FlagDebug, false, "")
 	return cmd
+}
+
+func TestEffectiveRegion(t *testing.T) {
+	srv := fakeKeystone(t, mksCatalog())
+
+	t.Run("explicit region wins without touching the client", func(t *testing.T) {
+		cmd := mksCommand()
+		if err := cmd.Flags().Set(FlagRegion, "ru-6"); err != nil {
+			t.Fatal(err)
+		}
+		// The endpoint and catalog are deliberately not consulted here: an
+		// explicitly selected region must short-circuit the derivation.
+		if got := EffectiveRegion(cmd, v1.NewMKSClientV1("", "")); got != "ru-6" {
+			t.Fatalf("EffectiveRegion = %q, want %q", got, "ru-6")
+		}
+	})
+
+	t.Run("falls back to the region of the resolved endpoint", func(t *testing.T) {
+		cmd := mksCommand()
+		if err := cmd.Flags().Set(FlagToken, "test-token"); err != nil {
+			t.Fatal(err)
+		}
+		if err := cmd.Flags().Set(FlagEndpoint, srv.URL+"/v3"); err != nil {
+			t.Fatal(err)
+		}
+		mksClient := v1.NewMKSClientV1("test-token", "https://mks.ru-2.examle.net/v1")
+		if got := EffectiveRegion(cmd, mksClient); got != "ru-2" {
+			t.Fatalf("EffectiveRegion = %q, want %q", got, "ru-2")
+		}
+	})
+
+	t.Run("empty region when the client has no endpoint", func(t *testing.T) {
+		cmd := mksCommand()
+		if got := EffectiveRegion(cmd, v1.NewMKSClientV1("", "")); got != "" {
+			t.Fatalf("EffectiveRegion = %q, want empty", got)
+		}
+	})
 }
 
 func TestNewClientsAllRegions(t *testing.T) {

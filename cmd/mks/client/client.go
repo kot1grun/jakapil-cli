@@ -159,6 +159,34 @@ func mksCredentials(cmd *cobra.Command) (token, identityEndpoint string, debugOu
 	return token, identityEndpoint, debugOut, nil
 }
 
+// EffectiveRegion returns the region a single-region MKS list actually used: the
+// explicitly selected --region/$OS_REGION_NAME when set, otherwise the region
+// whose endpoint the client resolved to from the catalog (the first public
+// endpoint). Unlike the gophercloud-based clients, the MKS SDK client keeps only
+// the endpoint URL and not the catalog, so the fallback re-authenticates once;
+// it only runs when no region was requested and a listing came back empty.
+func EffectiveRegion(cmd *cobra.Command, c *v1.ServiceClient) string {
+	if region := resolveMksRegion(cmd); region != "" {
+		return region
+	}
+	if c == nil || c.Endpoint == "" {
+		return ""
+	}
+	token, identityEndpoint, debugOut, err := mksCredentials(cmd)
+	if err != nil {
+		return ""
+	}
+	region, err := keystone.RegionMatchingEndpointAuthenticated(keystone.Options{
+		IdentityEndpoint: identityEndpoint,
+		Token:            token,
+		Debug:            debugOut,
+	}, c.Endpoint)
+	if err != nil {
+		return ""
+	}
+	return region
+}
+
 // resolveMksRegion returns the target region from the "--region" flag,
 // otherwise from the $OS_REGION_NAME environment variable.
 func resolveMksRegion(cmd *cobra.Command) string {
