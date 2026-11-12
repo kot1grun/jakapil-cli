@@ -105,7 +105,8 @@ func newCreateCommand() *cobra.Command {
 The name (--name) and flavor (--flavor-ref) are required; the image (--image-ref)
 is required unless the server is booted from a volume. The server is attached to
 the networks given with --net/--port, to none (--network none) or to "auto"
-networks (--network auto).`,
+networks (--network auto). An existing SSH keypair can be injected into the new
+server with --key-name.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c, err := client.NewComputeServiceClient(cmd)
 			if err != nil {
@@ -121,6 +122,7 @@ networks (--network auto).`,
 	cmd.Flags().StringArray("port", nil, "ID of a neutron port to attach the server to (repeatable)")
 	cmd.Flags().String("network", "", "attach to networks automatically: auto or none (alternative to --net/--port)")
 	cmd.Flags().StringArray("security-group", nil, "name of a security group to apply (repeatable)")
+	cmd.Flags().String("key-name", "", "name of an SSH keypair to inject into the server at launch")
 	cmd.Flags().String("availability-zone", "", "availability zone in which to launch the server")
 	cmd.Flags().String("user-data-file", "", "path to a file with user data to pass to the server at launch")
 	cmd.Flags().StringToString("metadata", nil, "metadata key=value pair (repeatable)")

@@ -50,6 +50,7 @@ func testCommand(t *testing.T) (*cobra.Command, *strings.Builder) {
 	fs.StringArray("port", nil, "")
 	fs.String("network", "", "")
 	fs.StringArray("security-group", nil, "")
+	fs.String("key-name", "", "")
 	fs.String("user-data-file", "", "")
 	fs.StringToString("metadata", nil, "")
 	fs.String("admin-pass", "", "")
@@ -182,6 +183,51 @@ func TestRunCreate(t *testing.T) {
 		t.Fatalf("create output missing server; got:\n%s", out.String())
 	}
 }
+func TestRunCreateWithKeyName(t *testing.T) {
+	fakeServer := th.SetupHTTP()
+	t.Cleanup(fakeServer.Teardown)
+
+	fakeServer.Mux.HandleFunc("/servers", func(w http.ResponseWriter, r *http.Request) {
+		th.TestMethod(t, r, "POST")
+		th.TestHeader(t, r, "X-Auth-Token", fake.TokenID)
+		th.TestJSONRequest(t, r, `{
+    "server": {
+        "name": "new-server",
+        "imageRef": "f90f6034-2570-4974-8351-6b49732ef2eb",
+        "flavorRef": "1",
+        "key_name": "my-ssh-key"
+    }
+}`)
+		w.Header().Add("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		fmt.Fprint(w, `{
+    "server": {
+        "id": "9e5476bd-a4ec-4653-93d6-72c93aa682ba",
+        "name": "new-server",
+        "status": "BUILD",
+        "flavor": {"id": "1"},
+        "image": {"id": "img-1"},
+        "addresses": {},
+        "key_name": "my-ssh-key",
+        "created": "2014-09-25T13:04:41Z"
+    }
+}`)
+	})
+
+	cmd, out := testCommand(t)
+	_ = cmd.Flags().Set("name", "new-server")
+	_ = cmd.Flags().Set("flavor-ref", "1")
+	_ = cmd.Flags().Set("image-ref", "f90f6034-2570-4974-8351-6b49732ef2eb")
+	_ = cmd.Flags().Set("key-name", "my-ssh-key")
+
+	if err := runCreate(cmd, fake.ServiceClient(fakeServer)); err != nil {
+		t.Fatalf("runCreate: %v", err)
+	}
+	if !strings.Contains(out.String(), "new-server") {
+		t.Fatalf("create output missing server; got:\n%s", out.String())
+	}
+}
+
 func TestRunCreateRequiresName(t *testing.T) {
 	cmd, _ := testCommand(t)
 	if err := runCreate(cmd, nil); err == nil {

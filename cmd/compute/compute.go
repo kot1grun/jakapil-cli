@@ -9,6 +9,7 @@ import (
 	"jakapil-cli/cmd/compute/client"
 	"jakapil-cli/cmd/compute/flavor"
 	"jakapil-cli/cmd/compute/image"
+	"jakapil-cli/cmd/compute/keypair"
 	"jakapil-cli/cmd/compute/server"
 	"jakapil-cli/cmd/compute/volume"
 	"jakapil-cli/internal/output"
@@ -22,7 +23,7 @@ func NewComputeCommand() *cobra.Command {
 		Short: "Manage Selectel Compute resources",
 		Long: `Manage Selectel Compute and related resources (volumes, images, flavors and so on).
 
-The following objects are supported: flavors, images, volumes, virtual machines (vms).`,
+The following objects are supported: flavors, images, volumes, virtual machines (vms), keypairs.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			_ = cmd.Help()
 		},
@@ -40,6 +41,7 @@ The following objects are supported: flavors, images, volumes, virtual machines 
 		image.NewImageCommand(),
 		volume.NewVolumeCommand(),
 		server.NewServerCommand(),
+		keypair.NewKeypairCommand(),
 	)
 
 	return cmd

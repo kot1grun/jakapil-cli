@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/gophercloud/gophercloud/v2"
+	"github.com/gophercloud/gophercloud/v2/openstack/compute/v2/keypairs"
 	"github.com/gophercloud/gophercloud/v2/openstack/compute/v2/servers"
 	"github.com/gophercloud/gophercloud/v2/pagination"
 	"github.com/spf13/cobra"
@@ -151,8 +152,9 @@ func runCreate(cmd *cobra.Command, c *gophercloud.ServiceClient) error {
 
 // serverCreateOpts builds the servers.CreateOpts from the create flags,
 // returning an error when required flags are missing or mutually exclusive
-// network options are combined.
-func serverCreateOpts(cmd *cobra.Command) (servers.CreateOpts, error) {
+// network options are combined. When --key-name is set the opts are wrapped in
+// a keypairs.CreateOptsExt so the key_name field lands in the request body.
+func serverCreateOpts(cmd *cobra.Command) (servers.CreateOptsBuilder, error) {
 	opts := servers.CreateOpts{
 		Name:             mustString(cmd, "name"),
 		ImageRef:         mustString(cmd, "image-ref"),
@@ -205,6 +207,10 @@ func serverCreateOpts(cmd *cobra.Command) (servers.CreateOpts, error) {
 		return opts, err
 	}
 	opts.Networks = networks
+
+	if keyName, _ := cmd.Flags().GetString("key-name"); keyName != "" {
+		return keypairs.CreateOptsExt{CreateOptsBuilder: opts, KeyName: keyName}, nil
+	}
 
 	return opts, nil
 }
