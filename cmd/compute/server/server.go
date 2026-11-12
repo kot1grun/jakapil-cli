@@ -140,8 +140,14 @@ func newUpdateCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update <server-id>",
 		Short: "Update a compute virtual machine",
-		Long:  `Update attributes of an existing virtual machine by its ID. At least one update option is required.`,
-		Args:  cobra.ExactArgs(1),
+		Long: `Update attributes of an existing virtual machine by its ID. At least one
+update option is required.
+
+The admin root password is changed with --admin-pass (a separate changePassword
+API action); it can be combined with any of the other update options or used
+alone.`,
+
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c, err := client.NewComputeServiceClient(cmd)
 			if err != nil {
@@ -154,6 +160,7 @@ func newUpdateCommand() *cobra.Command {
 	cmd.Flags().String("access-ipv4", "", "new IPv4 address advertised for the server")
 	cmd.Flags().String("access-ipv6", "", "new IPv6 address advertised for the server")
 	cmd.Flags().String("hostname", "", "new hostname for the server (requires a recent microversion)")
+	cmd.Flags().String("admin-pass", "", "new admin (root) password for the server")
 	return cmd
 }
 

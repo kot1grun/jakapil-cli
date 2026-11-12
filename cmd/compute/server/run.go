@@ -267,27 +267,42 @@ func networkOpts(cmd *cobra.Command) (any, error) {
 }
 
 // runUpdate applies at least one update option and renders the updated server.
+// The optional --admin-pass is a separate changePassword API action; when used
+// alone it is the only thing performed and a short confirmation replaces the
+// (not-applicable) server render.
 func runUpdate(cmd *cobra.Command, c *gophercloud.ServiceClient, args []string) error {
 	opts := servers.UpdateOpts{}
-	changed := false
+	updateChanged := false
 	if cmd.Flags().Changed("name") {
 		opts.Name = mustString(cmd, "name")
-		changed = true
+		updateChanged = true
 	}
 	if cmd.Flags().Changed("access-ipv4") {
 		opts.AccessIPv4 = mustString(cmd, "access-ipv4")
-		changed = true
+		updateChanged = true
 	}
 	if cmd.Flags().Changed("access-ipv6") {
 		opts.AccessIPv6 = mustString(cmd, "access-ipv6")
-		changed = true
+		updateChanged = true
 	}
 	if v := mustString(cmd, "hostname"); cmd.Flags().Changed("hostname") {
 		opts.Hostname = &v
-		changed = true
+		updateChanged = true
 	}
-	if !changed {
-		return fmt.Errorf("at least one update option is required: --name, --access-ipv4, --access-ipv6 or --hostname")
+	passwordChanged := cmd.Flags().Changed("admin-pass")
+
+	if !updateChanged && !passwordChanged {
+		return fmt.Errorf("at least one update option is required: --name, --access-ipv4, --access-ipv6, --hostname or --admin-pass")
+	}
+
+	if passwordChanged {
+		if err := servers.ChangeAdminPassword(cmd.Context(), c, args[0], mustString(cmd, "admin-pass")).ExtractErr(); err != nil {
+			return err
+		}
+		if !updateChanged {
+			fmt.Fprintf(cmd.OutOrStdout(), "server %s admin password changed\n", args[0])
+			return nil
+		}
 	}
 
 	server, err := servers.Update(cmd.Context(), c, args[0], opts).Extract()

@@ -286,6 +286,54 @@ func TestRunUpdate(t *testing.T) {
 		t.Fatalf("update output missing server; got:\n%s", out.String())
 	}
 }
+func TestRunUpdateAdminPassword(t *testing.T) {
+	fakeServer := th.SetupHTTP()
+	t.Cleanup(fakeServer.Teardown)
+	setupAction(fakeServer, t, `{ "changePassword": { "adminPass": "new-password" } }`)
+
+	cmd, out := testCommand(t)
+	_ = cmd.Flags().Set("admin-pass", "new-password")
+	if err := runUpdate(cmd, fake.ServiceClient(fakeServer), []string{"1234asdf"}); err != nil {
+		t.Fatalf("runUpdate --admin-pass: %v", err)
+	}
+	if !strings.Contains(out.String(), "admin password changed") {
+		t.Fatalf("update output missing confirmation; got:\n%s", out.String())
+	}
+}
+
+func TestRunUpdateAdminPasswordWithName(t *testing.T) {
+	fakeServer := th.SetupHTTP()
+	t.Cleanup(fakeServer.Teardown)
+	setupAction(fakeServer, t, `{ "changePassword": { "adminPass": "new-password" } }`)
+	fakeServer.Mux.HandleFunc("/servers/1234asdf", func(w http.ResponseWriter, r *http.Request) {
+		th.TestMethod(t, r, "PUT")
+		th.TestHeader(t, r, "X-Auth-Token", fake.TokenID)
+		th.TestJSONRequest(t, r, `{ "server": { "name": "new-name" } }`)
+		w.Header().Add("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+    "server": {
+        "id": "9e5476bd-a4ec-4653-93d6-72c93aa682ba",
+        "name": "new-name",
+        "status": "ACTIVE",
+        "flavor": {"id": "1"},
+        "image": {"id": "img-1"},
+        "addresses": {},
+        "key_name": null,
+        "created": "2014-09-25T13:04:41Z"
+    }
+}`)
+	})
+
+	cmd, out := testCommand(t)
+	_ = cmd.Flags().Set("name", "new-name")
+	_ = cmd.Flags().Set("admin-pass", "new-password")
+	if err := runUpdate(cmd, fake.ServiceClient(fakeServer), []string{"1234asdf"}); err != nil {
+		t.Fatalf("runUpdate combined: %v", err)
+	}
+	if !strings.Contains(out.String(), "new-name") {
+		t.Fatalf("combined update output missing rendered server; got:\n%s", out.String())
+	}
+}
 
 func TestRunUpdateRequiresOption(t *testing.T) {
 	cmd, _ := testCommand(t)
