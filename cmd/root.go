@@ -17,8 +17,10 @@ import (
 	"jakapil-cli/cmd/mks"
 	"jakapil-cli/cmd/onboard"
 	"jakapil-cli/cmd/selproject"
+	"jakapil-cli/cmd/version"
 	"jakapil-cli/cmd/vpc"
 	"jakapil-cli/internal/authentication"
+	"jakapil-cli/internal/logo"
 )
 
 var (
@@ -34,7 +36,7 @@ var (
 var rootCmd = &cobra.Command{
 	Use:   "jakapil-cli",
 	Short: "Absolutely unofficial CLI client for Selectel services",
-	Long: `Absolutely unofficial CLI client for Selectel cloud and baremetal services.
+	Long: logo.Banner + "\n\n" + `Absolutely unofficial CLI client for Selectel cloud and baremetal services.
 Just for now it supports only those subcommands, which can use already
 existing go libraries from Selectel.`,
 	// Uncomment the following line if your bare application
@@ -83,6 +85,9 @@ func init() {
 
 	// Register the selproject command tree (selproject list/create/update/delete).
 	rootCmd.AddCommand(selproject.NewSelProjectCommand())
+
+	// Register the version command (version).
+	rootCmd.AddCommand(version.NewVersionCommand())
 
 	// Here you will define your flags and configuration settings.
 	// Cobra supports persistent flags, which, if defined here,

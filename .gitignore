@@ -93,3 +93,5 @@ Temporary Items
 # End of https://www.toptal.com/developers/gitignore/api/linux,macos,go
 #### My custom additions ####
 bin/
+# Added by goreleaser init:
+dist/

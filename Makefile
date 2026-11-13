@@ -6,6 +6,19 @@ BIN_DIR  := bin
 GO       ?= go
 GOPROXY  ?= $(shell $(GO) env GOPROXY)
 
+# Version information stamped into the binary at link time. The version is
+# derived from the most recent git tag (via `git describe --tags`); when no tag
+# exists it falls back to 0.0.0.
+VERSION_TAG := $(shell git describe --tags --abbrev=0 2>/dev/null)
+VERSION     := $(if $(VERSION_TAG),$(VERSION_TAG),0.0.0)
+GITCOMMIT   := $(shell git rev-parse --short HEAD 2>/dev/null)
+BUILDDATE   := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+
+VERSION_PKG := jakapil-cli/cmd/version
+LDFLAGS := -X $(VERSION_PKG).version=$(VERSION) \
+           -X $(VERSION_PKG).gitCommit=$(GITCOMMIT) \
+           -X $(VERSION_PKG).buildDate=$(BUILDDATE)
+
 # Path to golangci-lint, if installed (used by the lint target below).
 GOLANGCI_LINT := $(shell command -v golangci-lint 2>/dev/null)
 
@@ -16,7 +29,7 @@ all: build
 
 ## build: compile the CLI binary into $(BIN_DIR)/$(BINARY).
 build:
-	$(GO) build -o $(BIN_DIR)/$(BINARY) .
+	$(GO) build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/$(BINARY) .
 
 ## clean: remove the build output directory.
 clean:
