@@ -1,0 +1,139 @@
+# .goreleaser.yaml — release configuration for jakapil-cli.
+# Docs: https://goreleaser.com
+# Schema (for editors): https://goreleaser.com/static/schema.json
+
+version: 2
+
+project_name: jakapil-cli
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: jakapil-cli
+    main: .
+    binary: jakapil-cli
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      # Inject the build metadata into the version command. The variables live
+      # in the jakapil-cli/cmd/version package (not main), mirroring the
+      # -ldflags used by the Makefile. Version is the git tag (goreleaser runs
+      # on a tag), so no "0.0.0" fallback is needed here.
+      - -X jakapil-cli/cmd/version.version={{ .Version }}
+      - -X jakapil-cli/cmd/version.gitCommit={{ .ShortCommit }}
+      - -X jakapil-cli/cmd/version.buildDate={{ .Date }}
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+      - "386"
+
+archives:
+  - id: archives
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    # This name template makes the OS and Arch compatible with the results of
+    # `uname`, e.g. jakapil-cli_Linux_x86_64.tar.gz.
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+
+# Source archive (tag tarball). In v2 this pipe is OFF by default, so it must be
+# enabled explicitly; default format is tar.gz.
+source:
+  enabled: true
+  name_template: "{{ .ProjectName }}-{{ .Version }}-source"
+
+checksum:
+  name_template: "checksums.txt"
+
+# Software Bill of Materials. Requires the `syft` binary in PATH, which is not
+# installed on the current dev machine, so this is kept disabled on purpose.
+# Enable it once `syft` is available:
+#   brew install syft
+# sboms:
+#   - artifacts: archive
+#     documents:
+#       - "{{ .ProjectName }}_{{ .Version }}_sbom.spdx.json"
+
+nfpms:
+  - id: packages
+    package_name: jakapil-cli
+    vendor: Kot1gruN
+    homepage: https://github.com/kot1grun/jakapil-cli
+    maintainer: Kot1gruN <orionplatinum [at] gmail.com>
+    description: |-
+      Jakapil-cli — an unofficial command line interface (CLI) for Selectel
+      cloud services: MKS (managed Kubernetes), Container Registry (CRaaS),
+      VPC, Compute and project management.
+    license: Apache-2.0
+    formats:
+      - deb
+      - rpm
+      # - msix
+    bindir: /usr/bin
+    contents:
+      - src: LICENSE
+        dst: /usr/share/licenses/jakapil-cli/LICENSE
+        file_info:
+          mode: 0644
+
+homebrew_casks:
+  # Homebrew Cask publication. Casks are the currently maintained Homebrew
+  # integration in GoReleaser (the classic `brews`/formula pipe is deprecated),
+  # so publishing via casks is the recommended path. Note a cask still needs a
+  # real macOS installable artifact (.app/.pkg/.dmg); a plain CLI binary in a
+  # tar.gz is not enough for a proper cask install. Publishing needs a token
+  # with access to the tap repository.
+  - name: jakapil-cli
+    repository:
+      owner: kot1grun
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    url:
+      template: "https://github.com/kot1grun/jakapil-cli/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
+    homepage: "https://github.com/kot1grun/jakapil-cli"
+    description: "Unofficial CLI client for Selectel cloud services."
+    license: Apache-2.0
+
+release:
+  # Repository in which the release will be created.
+  # Default: extracted from the origin remote URL or empty if its private hosted.
+  # You can set only one of either 'github', 'gitlab', or 'gitea'.
+  github: # OR gitlab OR gitea
+    owner: kot1grun
+    name: jakapil-cli
+  # NOTE: self-hosted GitLab detection depends on the remote hostname and can
+  # only be validated with network+token. Verify with a tag before relying on it:
+  #   goreleaser release --snapshot --clean --skip=publish
+  #   goreleaser release --clean (on a real vX.Y.Z tag, with GITLAB_TOKEN set)
+  footer: >-
+
+    ---
+
+    Released by [GoReleaser](https://github.com/goreleaser/goreleaser).
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
