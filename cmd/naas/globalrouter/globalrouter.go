@@ -25,11 +25,29 @@ func NewGlobalRouterCommand() *cobra.Command {
 
 	cmd.AddCommand(
 		newListCommand(),
+		newShowCommand(),
 		newCreateCommand(),
 		newUpdateCommand(),
 		newDeleteCommand(),
 	)
 
+	return cmd
+}
+
+func newShowCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "show <router-id>",
+		Short: "Show a Global Router router",
+		Long:  `Show the full information about a Global Router router by its ID.`,
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, err := client.NewClient(cmd)
+			if err != nil {
+				return err
+			}
+			return runShow(cmd, c, args[0])
+		},
+	}
 	return cmd
 }
 

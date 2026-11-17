@@ -174,6 +174,28 @@ func TestRunCreateRequiresName(t *testing.T) {
 	}
 }
 
+func TestRunShowTable(t *testing.T) {
+	const id = "11111111-1111-1111-1111-111111111111"
+	mux, cl := testClient(t)
+	mux.HandleFunc("/routers/"+id, func(w http.ResponseWriter, r *http.Request) {
+		verifyRequest(t, r, http.MethodGet)
+		w.Header().Add("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(routerBody))
+	})
+
+	cmd, out := testCommand(t)
+	_ = cmd.Flags().Set("output", "table")
+	if err := runShow(cmd, cl, id); err != nil {
+		t.Fatalf("runShow: %v", err)
+	}
+	for _, want := range []string{"ID", "Name", "test_rtr", "ACTIVE", "Account ID", "777777", "Prefix Pool ID", "88a5f82b-3151-4d84-b111-2e06ee44d899"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("show output missing %q; got:\n%s", want, out.String())
+		}
+	}
+}
+
 func TestRunUpdate(t *testing.T) {
 	const id = "11111111-1111-1111-1111-111111111111"
 	mux, cl := testClient(t)

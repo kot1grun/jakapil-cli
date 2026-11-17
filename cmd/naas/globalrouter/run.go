@@ -31,6 +31,16 @@ func runList(cmd *cobra.Command, c *v1.ServiceClient) error {
 	return render(cmd, *list)
 }
 
+// runShow fetches a single router by its ID and renders its full attributes
+// through the --output flag (a vertical Parameter/Value table in table mode).
+func runShow(cmd *cobra.Command, c *v1.ServiceClient, id string) error {
+	router, _, err := c.Router(cmd.Context(), id)
+	if err != nil {
+		return err
+	}
+	return renderShow(cmd, router)
+}
+
 // runCreate builds the create options from the flags and renders the created
 // router. The name is required.
 func runCreate(cmd *cobra.Command, c *v1.ServiceClient) error {
