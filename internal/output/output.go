@@ -28,6 +28,11 @@ const (
 
 	// Table represents the compact tabular output format (rivo/tview).
 	Table = "table"
+
+	// DenseTable ("dt") is the tabular format that also splits UUID cells at
+	// each '-', so router/network/static-route grids stay within a typical
+	// window width.
+	DenseTable = "dt"
 )
 
 // Print renders v to the command output using the value of the persistent
@@ -99,12 +104,13 @@ func renderYAML(w io.Writer, v interface{}) error {
 	return err
 }
 
-// IsTable reports whether the --output flag on cmd is set to the compact
-// tabular format. Long-form formats (JSON/YAML) carry the full record set,
-// which gets verbose for list/table data, so callers route to PrintTable.
+// IsTable reports whether the --output flag on cmd is set to a tabular format
+// ("table" or the dense "dt"). Long-form formats (JSON/YAML) carry the full
+// record set, which gets verbose for list/table data, so callers route to
+// PrintTable.
 func IsTable(cmd *cobra.Command) bool {
 	format, _ := cmd.Flags().GetString("output")
-	return format == Table
+	return format == Table || format == DenseTable
 }
 
 // YesNo renders a boolean as a compact "yes"/"no" value for table cells.
@@ -159,22 +165,97 @@ func PrintTable(cmd *cobra.Command, header []string, rows [][]string) error {
 		// empty collection untouched and never reach this branch.
 		return PrintListEmpty(cmd, "")
 	}
+	// Only the dense table format ("dt") splits UUID cells at each '-' and
+	// breaks comma-separated list cells (e.g. tags) onto their own lines. The
+	// default table keeps a single row per record even if that makes a column
+	// wider than the terminal.
+	tableRows := rows
+	if isDense(cmd) {
+		tableRows = wrapDenseCells(rows)
+	}
 	w := cmd.OutOrStdout()
 	var text string
 	var err error
-	if tableHasMultiline(rows) {
+	if tableHasMultiline(tableRows) {
 		// Multi-line cells (values containing '\n') are not representable by
 		// the tview draw used in RenderTable, which allocates exactly two
 		// screen rows per logical row. Route them to the direct renderer.
-		text = renderMultilineTable(header, rows)
+		text = renderMultilineTable(header, tableRows)
 	} else {
-		text, err = RenderTable(header, rows)
+		text, err = RenderTable(header, tableRows)
 		if err != nil {
 			return err
 		}
 	}
 	_, err = fmt.Fprintln(w, text)
 	return err
+}
+
+// isDense reports whether the --output flag on cmd requests the dense table
+// format ("dt").
+func isDense(cmd *cobra.Command) bool {
+	format, _ := cmd.Flags().GetString("output")
+	return format == DenseTable
+}
+
+// wrapDenseCells returns a copy of rows made narrower for the dense table
+// format: cells that are exactly a UUID (5 hyphen-separated hexadecimal groups,
+// 36 chars) gain a line break after each hyphen, and cells holding a
+// comma-separated list (e.g. tags) are broken onto one line per element.
+// Everything else — including single comma-less values and the original rows
+// slice — is kept untouched.
+func wrapDenseCells(rows [][]string) [][]string {
+	out := make([][]string, len(rows))
+	for i, row := range rows {
+		out[i] = make([]string, len(row))
+		for c, cell := range row {
+			out[i][c] = cell
+			switch {
+			case isUUID(cell):
+				out[i][c] = strings.ReplaceAll(cell, "-", "-\n")
+			case strings.Contains(cell, ","):
+				out[i][c] = splitList(cell)
+			}
+		}
+	}
+	return out
+}
+
+// splitList breaks a comma-separated list into one trimmed element per line, so
+// tag columns in the dense format render each tag on its own row instead of
+// widening a column.
+func splitList(cell string) string {
+	parts := strings.Split(cell, ",")
+	for i := range parts {
+		parts[i] = strings.TrimSpace(parts[i])
+	}
+	return strings.Join(parts, "\n")
+}
+
+// isUUID reports whether s looks like a standard 36-character UUID with
+// dashes in positions 8, 13, 18 and 23 and hexadecimal digits everywhere else.
+func isUUID(s string) bool {
+	if len(s) != 36 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		switch i {
+		case 8, 13, 18, 23:
+			if s[i] != '-' {
+				return false
+			}
+		default:
+			if !isHexDigit(s[i]) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// isHexDigit reports whether b is a hexadecimal digit (0-9, a-f, A-F).
+func isHexDigit(b byte) bool {
+	return (b >= '0' && b <= '9') || (b >= 'a' && b <= 'f') || (b >= 'A' && b <= 'F')
 }
 
 // PrintListEmpty writes a plain "No resources found." notice to the command

@@ -34,7 +34,7 @@ The following objects are supported: networks and subnets.`,
 	cmd.PersistentFlags().StringP(client.FlagEndpoint, "e", client.DefaultEndpoint, "Selectel Keystone Identity v3 auth URL for authentication and service discovery (default $OS_AUTH_URL)")
 	cmd.PersistentFlags().String(client.FlagRegion, "", "target region for VPC endpoint discovery, e.g. ru-1 (default $OS_REGION_NAME)")
 	cmd.PersistentFlags().Bool(client.FlagDebug, false, "print the discovered service catalog and VPC endpoint to stderr")
-	cmd.PersistentFlags().StringP("output", "o", output.Table, "output format: table, json or yaml")
+	cmd.PersistentFlags().StringP("output", "o", output.Table, "output format: table|dt|json|yaml")
 
 	cmd.AddCommand(
 		network.NewNetworkCommand(),

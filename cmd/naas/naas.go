@@ -35,7 +35,7 @@ The following objects are supported: global-router, zones, zonegroups, services.
 
 	// Persistent flags are shared by all naas subcommands.
 	cmd.PersistentFlags().StringP(client.FlagToken, "t", "", "Selectel Keystone API token, must be account-scoped (default $SLT_KS_TOKEN)")
-	cmd.PersistentFlags().StringP("output", "o", output.Table, "output format: table, json or yaml")
+	cmd.PersistentFlags().StringP("output", "o", output.Table, "output format: table|dt|json|yaml")
 
 	cmd.AddCommand(
 		globalrouter.NewGlobalRouterCommand(),

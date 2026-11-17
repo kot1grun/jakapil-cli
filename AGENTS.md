@@ -109,6 +109,8 @@ bin/                        артефакт сборки (gitignored)
   `printDebug` — дамп каталога и выбранного endpoint'а при `--debug`.
 - **`internal/output`**: унифицированный вывод. `Print` — json/yaml/plain;
   `PrintTable` — таблицы rivo/tview (с автошириной и уважением к runewidth);
+  формат `dt` (dense table, `-o dt`) разбивает UUID-ячейки по дефисам, чтобы
+  узкие колонки (router/network/static-route) помещались в ширину окна;
   `RenderRegionsBestEffort` — агрегированный вывод по регионам (колонка `Region`
   в table, группировка в json/yaml).
 - **`internal/parallel`**: `parallel.Regions(ctx, regions, fn)` — конкурентный,

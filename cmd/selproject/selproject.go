@@ -32,7 +32,7 @@ persisted by that command for reuse.`,
 	cmd.PersistentFlags().StringP(client.FlagEndpoint, "e", client.DefaultEndpoint, "Selectel Keystone Identity v3 auth URL for Resell endpoint discovery (default $OS_AUTH_URL)")
 	cmd.PersistentFlags().String(client.RegionFlag, "", "Resell catalog region to use, e.g. ru-1 (default: first public region from the catalog)")
 	cmd.PersistentFlags().Bool(client.FlagDebug, false, "print the discovered service catalog resell endpoint to stderr")
-	cmd.PersistentFlags().StringP("output", "o", output.Table, "output format: table, json or yaml")
+	cmd.PersistentFlags().StringP("output", "o", output.Table, "output format: table|dt|json|yaml")
 
 	cmd.AddCommand(
 		newListCommand(),

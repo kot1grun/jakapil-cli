@@ -90,7 +90,7 @@ token(s), printing them to stdout for use in scripts and openrc files.`,
 	// craas): "authenticate token list" renders the unified tabular output by
 	// default, with json/yaml available through the flag. The token "issue"
 	// command prints raw token values for scripting and ignores it.
-	cmd.PersistentFlags().StringP("output", "o", output.Table, "output format: table, json or yaml")
+	cmd.PersistentFlags().StringP("output", "o", output.Table, "output format: table|dt|json|yaml")
 
 	cmd.AddCommand(newTokenCommand())
 	return cmd

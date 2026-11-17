@@ -172,3 +172,124 @@ func TestIsTable(t *testing.T) {
 		t.Fatal("expected IsTable to be false after --output yaml")
 	}
 }
+
+func TestIsUUID(t *testing.T) {
+	valid := []string{
+		"11111111-1111-1111-1111-111111111111",
+		"88888888-8888-8888-8888-888888888888",
+		"abcdef01-1234-5678-9abc-def012345678",
+	}
+	invalid := []string{
+		"",
+		"cloud_net",
+		"11111111-1111-1111-1111-11111111111",   // 35 chars
+		"11111111-1111-1111-1111-1111111111111", // 37 chars
+		"11111111-zzzz-1111-1111-111111111111",  // non-hex group
+		"11111111-1111-111x-1111-111111111111",  // non-hex digit
+		"111111111111-1111-1111-111111111111",   // dash in wrong position
+	}
+	for _, s := range valid {
+		if !isUUID(s) {
+			t.Fatalf("expected isUUID(%q) = true", s)
+		}
+	}
+	for _, s := range invalid {
+		if isUUID(s) {
+			t.Fatalf("expected isUUID(%q) = false", s)
+		}
+	}
+}
+
+func TestWrapDenseCells(t *testing.T) {
+	uuid := "11111111-1111-1111-1111-111111111111"
+	rows := [][]string{
+		{uuid, "cloud_net", "ACTIVE", "prod,ha,blue"},
+	}
+	got := wrapDenseCells(rows)
+	// Original slice is not mutated.
+	if a, b := rows[0][0], uuid; a != b {
+		t.Fatalf("input row must be unchanged, got %q", rows[0][0])
+	}
+	if want := "11111111-\n1111-\n1111-\n1111-\n111111111111"; got[0][0] != want {
+		t.Fatalf("uuid cell not wrapped.\nwant: %q\ngot:  %q", want, got[0][0])
+	}
+	if got[0][1] != "cloud_net" || got[0][2] != "ACTIVE" {
+		t.Fatalf("non-uuid value cells must be untouched: %v", got[0])
+	}
+	if want := "prod\nha\nblue"; got[0][3] != want {
+		t.Fatalf("comma list not split.\nwant: %q\ngot:  %q", want, got[0][3])
+	}
+}
+
+func TestSplitListTrimsSpaces(t *testing.T) {
+	got := splitList(" prod ,ha ,  blue ")
+	if want := "prod\nha\nblue"; got != want {
+		t.Fatalf("splitList mismatch.\nwant: %q\ngot:  %q", want, got)
+	}
+}
+
+func TestPrintTableWrapsUUID(t *testing.T) {
+	cmd := &cobra.Command{Use: "leaf"}
+	cmd.Flags().StringP("output", "o", Table, "")
+	buf := &strings.Builder{}
+	cmd.SetOut(buf)
+
+	uuid := "11111111-1111-1111-1111-111111111111"
+	_ = cmd.Flags().Set("output", DenseTable)
+	if err := PrintTable(cmd, []string{"ID", "Name"}, [][]string{{uuid, "cloud_net"}}); err != nil {
+		t.Fatalf("PrintTable: %v", err)
+	}
+	if !strings.Contains(buf.String(), "1111-") {
+		t.Fatalf("expected hyphen to end a wrapped line, got:\n%s", buf.String())
+	}
+	if strings.Contains(buf.String(), uuid) {
+		t.Fatalf("full unwrapped uuid must not appear, got:\n%s", buf.String())
+	}
+}
+
+func TestPrintTableDefaultKeepsUUID(t *testing.T) {
+	cmd := &cobra.Command{Use: "leaf"}
+	cmd.Flags().StringP("output", "o", Table, "")
+	buf := &strings.Builder{}
+	cmd.SetOut(buf)
+
+	uuid := "11111111-1111-1111-1111-111111111111"
+	if err := PrintTable(cmd, []string{"ID", "Name"}, [][]string{{uuid, "cloud_net"}}); err != nil {
+		t.Fatalf("PrintTable: %v", err)
+	}
+	if !strings.Contains(buf.String(), uuid) {
+		t.Fatalf("default table must keep the uuid on one line, got:\n%s", buf.String())
+	}
+}
+
+func TestPrintTableWrapsTags(t *testing.T) {
+	cmd := &cobra.Command{Use: "leaf"}
+	cmd.Flags().StringP("output", "o", Table, "")
+	buf := &strings.Builder{}
+	cmd.SetOut(buf)
+
+	_ = cmd.Flags().Set("output", DenseTable)
+	if err := PrintTable(cmd, []string{"Name", "Tags"}, [][]string{{"cloud_net", "prod,ha,blue"}}); err != nil {
+		t.Fatalf("PrintTable: %v", err)
+	}
+	if !strings.Contains(buf.String(), "prod") || !strings.Contains(buf.String(), "ha") || !strings.Contains(buf.String(), "blue") {
+		t.Fatalf("dense table must show each tag on its own line, got:\n%s", buf.String())
+	}
+	if strings.Contains(buf.String(), "prod,ha,blue") {
+		t.Fatalf("dense table must not keep the comma-joined tag list, got:\n%s", buf.String())
+	}
+}
+
+func TestPrintTableDefaultKeepsTags(t *testing.T) {
+	cmd := &cobra.Command{Use: "leaf"}
+	cmd.Flags().StringP("output", "o", Table, "")
+	buf := &strings.Builder{}
+	cmd.SetOut(buf)
+
+	if err := PrintTable(cmd, []string{"Name", "Tags"}, [][]string{{"cloud_net", "prod,ha,blue"}}); err != nil {
+		t.Fatalf("PrintTable: %v", err)
+	}
+	if !strings.Contains(buf.String(), "prod,ha,blue") {
+		t.Fatalf("default table must keep tags comma-joined on one line, got:\n%s", buf.String())
+	}
+}
