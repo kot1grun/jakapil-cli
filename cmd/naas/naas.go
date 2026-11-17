@@ -8,6 +8,7 @@ import (
 
 	"jakapil-cli/cmd/naas/client"
 	"jakapil-cli/cmd/naas/globalrouter"
+	"jakapil-cli/cmd/naas/services"
 	"jakapil-cli/cmd/naas/zonegroups"
 	"jakapil-cli/cmd/naas/zones"
 	"jakapil-cli/internal/output"
@@ -26,7 +27,7 @@ func NewNaasCommand() *cobra.Command {
 The API endpoint is fixed (https://api.selectel.ru/naas/v1) and does not require
 Keystone service discovery: only an authentication token is needed.
 
-The following objects are supported: global-router, zones, zonegroups.`,
+The following objects are supported: global-router, zones, zonegroups, services.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			_ = cmd.Help()
 		},
@@ -40,6 +41,7 @@ The following objects are supported: global-router, zones, zonegroups.`,
 		globalrouter.NewGlobalRouterCommand(),
 		zones.NewZonesCommand(),
 		zonegroups.NewZoneGroupsCommand(),
+		services.NewServicesCommand(),
 	)
 
 	return cmd
