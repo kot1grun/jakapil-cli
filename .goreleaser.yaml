@@ -91,6 +91,13 @@ nfpms:
         dst: /usr/share/licenses/jakapil-cli/LICENSE
         file_info:
           mode: 0644
+    # msix:
+    #   publisher: "CN=Kot1gruN"
+    #   properties:
+    #     logo: https://brand.selectel.ru/wp-content/uploads/2023/11/trex_fill.svg
+    #   applications:
+    #     - id: JakapilCLI
+    #       executable: jakapil-cli.exe
 
 homebrew_casks:
   # Homebrew Cask publication. Casks are the currently maintained Homebrew

@@ -7,8 +7,8 @@ Unofficial CLI for Selectel cloud services.
 ![Jakapil](assets/images/yakapil_nature.jpeg)
 
 [![License](https://img.shields.io/github/license/readme-SVG/readme-badges?style=flat-square)](LICENSE)
-![Go](https://img.shields.io/badge/go-%2300ADD8.svg?style=for-the-badge&logo=go&logoColor=white)
-[![Release](https://img.shields.io/github/v/release/kot1grun/jakapil-cli)](https://github.com/kot1grun/jakapil-cli/releases)
+![Go](https://img.shields.io/badge/go-%2300ADD8.svg?style=flat-square&logo=go&logoColor=white)
+[![Release](https://img.shields.io/github/v/release/kot1grun/jakapil-cli?style=flat-square)](https://github.com/kot1grun/jakapil-cli/releases)
 
 ## Who is Jakapil
 
