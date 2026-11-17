@@ -7,16 +7,19 @@ import (
 	"github.com/spf13/cobra"
 
 	"jakapil-cli/cmd/naas/client"
+	"jakapil-cli/cmd/naas/globalrouter/network"
+	"jakapil-cli/cmd/naas/globalrouter/staticroute"
 )
 
 // NewGlobalRouterCommand returns the parent "naas global-router" command with its
-// subcommands: list, create, update and delete. It manages Global Router (NaaS)
-// routers through the selectel/globalrouter-go V1 API.
+// subcommands: list, create, update, delete, static-route and network. It
+// manages Global Router (NaaS) routers through the selectel/globalrouter-go V1
+// API.
 func NewGlobalRouterCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "global-router",
 		Short:   "Manage Global Router routers",
-		Long:    `Create, list, update and delete Selectel Global Router (NaaS) routers.`,
+		Long:    `Create, list, update and delete Selectel Global Router (NaaS) routers, networks and static routes.`,
 		Aliases: []string{"gr"},
 		Run: func(cmd *cobra.Command, args []string) {
 			_ = cmd.Help()
@@ -29,6 +32,8 @@ func NewGlobalRouterCommand() *cobra.Command {
 		newCreateCommand(),
 		newUpdateCommand(),
 		newDeleteCommand(),
+		staticroute.NewStaticRouteCommand(),
+		network.NewNetworkCommand(),
 	)
 
 	return cmd
