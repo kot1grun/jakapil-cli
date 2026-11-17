@@ -10,6 +10,15 @@ Unofficial CLI for Selectel cloud services.
 ![Go](https://img.shields.io/badge/go-%2300ADD8.svg?style=flat-square&logo=go&logoColor=white)
 [![Release](https://img.shields.io/github/v/release/kot1grun/jakapil-cli?style=flat-square)](https://github.com/kot1grun/jakapil-cli/releases)
 
+## Table of contents
+
+- [What is Jakapil?](#what-is-it)
+- [Installation](#install)
+- [Build](#build)
+- [Quick start](#quick-start)
+
+<a id="what-is-it"></a>
+
 ## Who is Jakapil
 
 **Jakapil** (or, to be precise, _Jakapil kaniukura_) is a dinosaur whose remains were discovered relatively recently, in 2022, in Argentina.
@@ -58,6 +67,8 @@ Of the main ones, the following libraries are used:
 - mks-go
 - craas-go
 
+<a id="install"></a>
+
 ## How to install Jakapil?
 
 ### macOS
@@ -84,6 +95,8 @@ At the moment, only the precompiled files in a zip archive are available.
 For the x86-64 architecture — [via this link](https://github.com/kot1grun/jakapil-cli/releases/latest/download/jakapil-cli_Windows_x86_64.zip), for ARM64 — [here](https://github.com/kot1grun/jakapil-cli/releases/latest/download/jakapil-cli_Windows_arm64.zip).
 If someone is still on x86 — download [here](https://github.com/kot1grun/jakapil-cli/releases/latest/download/jakapil-cli_Windows_i386.zip).
 
+<a id="build"></a>
+
 ## How to build Jakapil
 
 You need [Go installed](https://go.dev/doc/install).
@@ -100,6 +113,8 @@ It is more convenient to use the Makefile. In that case, you need GNU Make insta
 ```shell
 make build
 ```
+
+<a id="quick-start"></a>
 
 ## Quick start
 

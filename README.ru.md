@@ -10,6 +10,15 @@
 ![Go](https://img.shields.io/badge/go-%2300ADD8.svg?style=flat-square&logo=go&logoColor=white)
 [![Release](https://img.shields.io/github/v/release/kot1grun/jakapil-cli?style=flat-square)](https://github.com/kot1grun/jakapil-cli/releases)
 
+## Оглавление
+
+- [Кто такой Якапиль?](#what-is-it)
+- [Установка](#install)
+- [Сборка](#build)
+- [Быстрый старт](#quick-start)
+
+<a id="what-is-it"></a>
+
 ## Кто такой Якапиль
 
 **Якапиль** (или, если быть точным, _«якапиль канюкура»_) — динозавр, останки которого обнаружили относительно недавно, в 2022 году, в Аргентине.
@@ -58,6 +67,8 @@
 - mks-go
 - craas-go
 
+<a id="install"></a>
+
 ## Как установить Якапиля?
 
 ### MacOS
@@ -84,6 +95,8 @@ brew install jakapil-cli
 Под архитектуру x86-64 — [по ссылке](https://github.com/kot1grun/jakapil-cli/releases/latest/download/jakapil-cli_Windows_x86_64.zip), для ARM64 — [здесь](https://github.com/kot1grun/jakapil-cli/releases/latest/download/jakapil-cli_Windows_arm64.zip).
 Если у кого-то остался x86 — скачиваем [здесь](https://github.com/kot1grun/jakapil-cli/releases/latest/download/jakapil-cli_Windows_i386.zip).
 
+<a id="build"></a>
+
 ## Как собрать Якапиля
 
 Требуется [установленный Go](https://go.dev/doc/install).
@@ -100,6 +113,8 @@ go build -o bin/ .
 ```shell
 make build
 ```
+
+<a id="quick-start"></a>
 
 ## Быстрый старт
 
