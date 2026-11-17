@@ -15,6 +15,7 @@ import (
 	"jakapil-cli/cmd/config"
 	"jakapil-cli/cmd/craas"
 	"jakapil-cli/cmd/mks"
+	"jakapil-cli/cmd/naas"
 	"jakapil-cli/cmd/onboard"
 	"jakapil-cli/cmd/selproject"
 	"jakapil-cli/cmd/version"
@@ -85,6 +86,9 @@ func init() {
 
 	// Register the selproject command tree (selproject list/create/update/delete).
 	rootCmd.AddCommand(selproject.NewSelProjectCommand())
+
+	// Register the global-router command tree (naas global-router).
+	rootCmd.AddCommand(naas.NewNaasCommand())
 
 	// Register the version command (version).
 	rootCmd.AddCommand(version.NewVersionCommand())

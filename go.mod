@@ -11,6 +11,7 @@ require (
 	github.com/rivo/tview v0.42.0
 	github.com/schollz/progressbar/v3 v3.19.1
 	github.com/selectel/craas-go v0.4.2
+	github.com/selectel/globalrouter-go v1.2.1
 	github.com/selectel/go-selvpcclient/v5 v5.0.0
 	github.com/selectel/mks-go v1.1.0
 	github.com/spf13/cobra v1.10.2
@@ -24,6 +25,7 @@ require (
 	github.com/gdamore/encoding v1.0.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/gofrs/uuid/v5 v5.5.1 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db // indirect

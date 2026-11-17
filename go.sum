@@ -17,6 +17,8 @@ github.com/gofrs/uuid/v5 v5.5.1 h1:z1Ce19/JwNidXpy3tOQc3241lnJLKdKyq/xlNvlD4Ng=
 github.com/gofrs/uuid/v5 v5.5.1/go.mod h1:bbAA98EoIlxyRHIVg6ektCSsZ5n8mSbwgEhvhMYlZgg=
 github.com/google/go-cmp v0.6.0 h1:ofyhxvXcZhMsU5ulbFiLKl/XBFqE1GSq7atu8tAmTRI=
 github.com/google/go-cmp v0.6.0/go.mod h1:17dUlkBOakJ0+DkrSSNjCkIjxS6bF9zb3elmeNGIjoY=
+github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
+github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
 github.com/gophercloud/gophercloud v1.14.1 h1:DTCNaTVGl8/cFu58O1JwWgis9gtISAFONqpMKNg/Vpw=
 github.com/gophercloud/gophercloud v1.14.1/go.mod h1:aAVqcocTSXh2vYFZ1JTvx4EQmfgzxRcNupUfxZbBNDM=
 github.com/gophercloud/gophercloud/v2 v2.15.0 h1:4zLiLYTFraZMlJ77FH1Kzq7itjfVP+BIbWcCurCrgic=
@@ -54,6 +56,8 @@ github.com/schollz/progressbar/v3 v3.19.1 h1:iv8BgwOvdML/S3p84uBpy/IMigv4U9594vP
 github.com/schollz/progressbar/v3 v3.19.1/go.mod h1:LFL7jqimKxfhero4K1eCkUr/6R39AgQeiPCJtlTWIW8=
 github.com/selectel/craas-go v0.4.2 h1:sfCpA9PygkBKeDOkuGgBAOemp6PSJOL58m47hkvtOKg=
 github.com/selectel/craas-go v0.4.2/go.mod h1:9RAUn9PdMITP4I3GAade6v2hjB2j3lo3J2dDlG5SLYE=
+github.com/selectel/globalrouter-go v1.2.1 h1:7daw9GX67h04gV1wfviIIveIUwS2ju56j2H/0iRvKLY=
+github.com/selectel/globalrouter-go v1.2.1/go.mod h1:3FlK0iJBZx8Lil3KOkOsU72yv7EcetdV7xNOvfX2+/U=
 github.com/selectel/go-selvpcclient/v5 v5.0.0 h1:jDlWiP61cFuZVcDslR7S1W/IWZAvEm8CZ9qvxczrax8=
 github.com/selectel/go-selvpcclient/v5 v5.0.0/go.mod h1:ul4sKOkZaO4RXCZVPgIOvNK96kF2bmR4xvr6oewVUec=
 github.com/selectel/mks-go v1.1.0 h1:puJW2uuleAwsVyJaaAeRBwrK8+1cQ8tL7deBjLOyToQ=

@@ -27,8 +27,8 @@
   английские. Отвечать/писать можно на языке пользователя, код комментируется
   по-английски.
 - Раньше поддерживались только MKS и CRaaS; сейчас добавлены `vpc`, `compute`,
-  `selproject`, `authenticate`, `onboard`, `config`. Новые сервисы добавляются
-  по мере появления SDK.
+  `selproject`, `naas`, `authenticate`, `onboard`, `config`. Новые сервисы
+  добавляются по мере появления SDK.
 - Объекты внутри `compute`: `flavor`, `image`, `volume` и `vm` (алиасы
   `virtual-machine`/`server`) — построены на gophercloud compute v2
   (`openstack/compute/v2/servers`) для list/show/create/update/delete.
@@ -47,6 +47,7 @@
   - `selectel/mks-go` — Managed Kubernetes (MKS);
   - `selectel/craas-go` — Container Registry as a Service (CRaaS);
   - `selectel/go-selvpcclient/v5` — Cloud Platform Projects (Resell) API;
+  - `selectel/globalrouter-go` — Global Router (NaaS);`
 - **Вывод**: `rivo/tview` + `gdamore/tcell` (рендер таблиц в терминале),
   `go.yaml.in/yaml/v3`, `mattn/go-runewidth` (ширина CJK-символов).
 - **Прочее**: `schollz/progressbar/v3` (прогресс), `golang.org/x/term` (пароли).
@@ -181,6 +182,13 @@ go test ./...
   (`--project-scope`, дефолт); **Resell/selproject** требует **account**-скоуп
   (`--account-scope`). Загрузчики токенов различают их — не заменяй
   `LoadUsableAccountToken` на `LoadUsableStoredToken` для `selproject`.
+- **Fixed-endpoint сервисы**: `naas` (команда `naas global-router`) — единственное
+  исключение из правила «не хардкодь endpoint»: его API не рекламируется в
+  Keystone каталоге, поэтому `cmd/naas/client` пинит
+  `DefaultAPIUrl = https://api.selectel.ru/naas/v1` и не использует
+  `internal/keystone`. Токен требуется account-скоуп
+  (`LoadUsableAccountToken`, как у Resell/selproject), а не project-скоуп из
+  `LoadUsableStoredToken` (который используют MKS/CRaaS).
 
 ### Как проверять вручную
 
@@ -195,7 +203,8 @@ make build
 ./bin/jakapil-cli mks cluster list   --region ru-6
 ./bin/jakapil-cli vpc network list   --region ru-6
 ./bin/jakapil-cli selproject list    --region ru-6          # ждёт account-токен
-# + --debug  для дампа каталога / endpoint
+./bin/jakapil-cli naas global-router list                 # фикс. endpoint, account-токен
+# + --debug  для дампа каталога / endpoint (кроме naas — endpoint фиксирован)
 ./bin/jakapil-cli mks cluster list --region ru-6 --debug
 ```
 
