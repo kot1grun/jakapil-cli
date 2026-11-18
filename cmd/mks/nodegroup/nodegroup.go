@@ -31,17 +31,18 @@ func NewNodeGroupCommand() *cobra.Command {
 
 Subcommands:
   list    List nodegroups of a cluster
+  show    Show details of a nodegroup by its identifier
   create  Create a nodegroup in a cluster
   update  Update nodegroup labels, taints or autoscaling
   resize  Resize a nodegroup by its desired node count
   delete  Delete a nodegroup by its identifier
 
 Flags:
-  -i, --id  Get details of a single nodegroup
+  -i, --id  Get details of a single nodegroup (legacy; prefer "show")
 
 Examples:
   jakapil-cli mks nodegroup list --cluster-id <cluster-id>
-  jakapil-cli mks nodegroup --cluster-id <cluster-id> --id <nodegroup-id>`,
+  jakapil-cli mks nodegroup show <nodegroup-id> --cluster-id <cluster-id>`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clusterID == "" || groupID == "" {
 				return cmd.Help()
@@ -57,13 +58,20 @@ Examples:
 			if err != nil {
 				return err
 			}
-			return render(cmd, ng)
+			return renderShow(cmd, ng)
 		},
 	}
 
 	cmd.Flags().StringVar(&clusterID, "cluster-id", "", "cluster ID")
 	cmd.Flags().StringVarP(&groupID, "id", "i", "", "nodegroup ID to get details for")
-	cmd.AddCommand(newListCommand(), newResizeCommand(), newDeleteCommand(), newCreateCommand(), newUpdateCommand())
+	cmd.AddCommand(
+		newListCommand(),
+		newShowCommand(),
+		newResizeCommand(),
+		newDeleteCommand(),
+		newCreateCommand(),
+		newUpdateCommand(),
+	)
 
 	return cmd
 }
