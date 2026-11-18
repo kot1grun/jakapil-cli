@@ -23,11 +23,12 @@ func NewClusterCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "cluster",
-		Short: "Manage MKS clusters (list, get)",
+		Short: "Manage MKS clusters (list, show)",
 		Long: `Manage Kubernetes clusters of the Selectel Managed Kubernetes Service.
 
 Subcommands:
   list            List all clusters in the current project
+  show            Show details of a cluster by its identifier
   create          Create a new cluster
   delete          Delete a cluster by its identifier
   get-kubeconfig  Get the kubeconfig of a cluster by its identifier
@@ -35,11 +36,12 @@ Subcommands:
   task            Manage cluster tasks (list, show)
 
 Flags:
-  -i, --id  Get details of a single cluster by its identifier
+  -i, --id  Get details of a single cluster by its identifier (legacy; prefer
+            "show")
 
 Examples:
   jakapil-cli mks cluster list
-  jakapil-cli mks cluster --id <cluster-id>`,
+  jakapil-cli mks cluster show <cluster-id>`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clusterID == "" {
 				return cmd.Help()
@@ -55,13 +57,14 @@ Examples:
 			if err != nil {
 				return err
 			}
-			return render(cmd, cl)
+			return renderShow(cmd, cl)
 		},
 	}
 
 	cmd.Flags().StringVarP(&clusterID, "id", "i", "", "cluster ID to get details for")
 	cmd.AddCommand(
 		newListCommand(),
+		newShowCommand(),
 		newCreateCommand(),
 		newDeleteCommand(),
 		newGetKubeconfigCommand(),
