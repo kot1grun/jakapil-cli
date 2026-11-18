@@ -161,6 +161,42 @@ func TestRunListEmpty(t *testing.T) {
 	}
 }
 
+// otherRouterNetworkBody points at a different router so the router filter can
+// be exercised against a two-network set.
+const otherRouterNetworkBody = `{
+	"id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+	"name": "other_net",
+	"vlan": 1,
+	"router_id": "99999999-9999-9999-9999-999999999999",
+	"zone_id": "33333333-3333-3333-3333-333333333333",
+	"status": "ACTIVE",
+	"account_id": "777777",
+	"tags": ["other"]
+}`
+
+func TestRunListFilterByRouterID(t *testing.T) {
+	body := `[` + otherRouterNetworkBody + `,` + vpcNetworkBody + `]`
+	mux, cl := testClient(t)
+	mux.HandleFunc("/networks", func(w http.ResponseWriter, r *http.Request) {
+		verifyRequest(t, r, http.MethodGet)
+		w.Header().Add("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(body))
+	})
+
+	cmd, out := testCommand(t)
+	_ = cmd.Flags().Set("router-id", routerID)
+	if err := runList(cmd, cl); err != nil {
+		t.Fatalf("runList: %v", err)
+	}
+	if !strings.Contains(out.String(), networkID) {
+		t.Fatalf("list output missing requested network; got:\n%s", out.String())
+	}
+	if strings.Contains(out.String(), "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa") {
+		t.Fatalf("list output must not contain networks of other routers; got:\n%s", out.String())
+	}
+}
+
 func TestRunShowTable(t *testing.T) {
 	mux, cl := testClient(t)
 	mux.HandleFunc("/networks/"+networkID, func(w http.ResponseWriter, r *http.Request) {

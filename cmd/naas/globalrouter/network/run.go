@@ -13,22 +13,37 @@ import (
 	"jakapil-cli/internal/output"
 )
 
-// runList lists networks, applying the --name filter when set, and renders the
-// result through the --output flag.
+// runList lists networks, applying the --name (API) and --router-id (client-side)
+// filters when set, and renders the result through the --output flag. The Global
+// Router list API has no router filter, so filtering by router is done locally
+// over the returned set.
 func runList(cmd *cobra.Command, c *v1.ServiceClient) error {
 	q := &v1.NetworksQueryParams{}
 	if name, _ := cmd.Flags().GetString("name"); name != "" {
 		q.Filters.Name = name
 	}
+	routerID, _ := cmd.Flags().GetString("router-id")
 
 	list, _, err := c.Networks(cmd.Context(), q)
 	if err != nil {
 		return err
 	}
-	if len(*list) == 0 && output.IsTable(cmd) {
+
+	networks := *list
+	if routerID != "" {
+		filtered := networks[:0]
+		for _, n := range networks {
+			if n.RouterID == routerID {
+				filtered = append(filtered, n)
+			}
+		}
+		networks = filtered
+	}
+
+	if len(networks) == 0 && output.IsTable(cmd) {
 		return output.PrintListEmpty(cmd, "")
 	}
-	return render(cmd, *list)
+	return render(cmd, networks)
 }
 
 // runShow fetches a single network by its ID and renders its full attributes

@@ -73,7 +73,9 @@ func newListCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List Global Router networks",
-		Long:  `List the networks of the project, optionally filtered by name.`,
+		Long: `List the networks of the project.
+--name is sent to the API as a filter, --router-id is applied locally over the
+returned set because the list API has no router filter.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c, err := client.NewClient(cmd)
 			if err != nil {
@@ -83,6 +85,7 @@ func newListCommand() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringP("name", "n", "", "filter networks by name")
+	cmd.Flags().String("router-id", "", "filter networks by router ID (client-side)")
 	return cmd
 }
 
