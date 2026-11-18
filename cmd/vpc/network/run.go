@@ -99,7 +99,7 @@ func runShow(cmd *cobra.Command, c *gophercloud.ServiceClient, args []string) er
 	if err != nil {
 		return err
 	}
-	return render(cmd, network)
+	return renderShow(cmd, network)
 }
 
 // runCreate builds the create options from the flags and renders the created

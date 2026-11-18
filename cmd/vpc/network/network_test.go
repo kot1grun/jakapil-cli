@@ -102,6 +102,26 @@ func TestRunShow(t *testing.T) {
 	}
 }
 
+func TestRunShowTable(t *testing.T) {
+	ts := testutil.Neutron(t, netResource)
+	cmd, out := testCommand(t)
+	if err := cmd.Flags().Set("output", "table"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runShow(cmd, testutil.NewClient(ts), []string{"net-1"}); err != nil {
+		t.Fatalf("runShow: %v", err)
+	}
+	for _, want := range []string{"Parameter", "Value", "ID", "net-1", "Name", "nf", "Status", "ACTIVE"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("show table output missing %q; got:\n%s", want, out.String())
+		}
+	}
+	if !strings.Contains(out.String(), "╔") || !strings.Contains(out.String(), "║") {
+		t.Fatalf("show must render a bordered vertical table:\n%s", out.String())
+	}
+}
+
 func TestRunCreate(t *testing.T) {
 	ts := testutil.Neutron(t, netResource)
 	cmd, out := testCommand(t)
