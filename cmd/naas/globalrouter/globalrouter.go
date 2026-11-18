@@ -9,6 +9,7 @@ import (
 	"jakapil-cli/cmd/naas/client"
 	"jakapil-cli/cmd/naas/globalrouter/network"
 	"jakapil-cli/cmd/naas/globalrouter/staticroute"
+	"jakapil-cli/cmd/naas/globalrouter/subnet"
 )
 
 // NewGlobalRouterCommand returns the parent "naas global-router" command with its
@@ -34,6 +35,7 @@ func NewGlobalRouterCommand() *cobra.Command {
 		newDeleteCommand(),
 		staticroute.NewStaticRouteCommand(),
 		network.NewNetworkCommand(),
+		subnet.NewSubnetCommand(),
 	)
 
 	return cmd
