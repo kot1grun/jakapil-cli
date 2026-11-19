@@ -10,6 +10,7 @@ import (
 	"jakapil-cli/cmd/vpc/floatingip"
 	"jakapil-cli/cmd/vpc/network"
 	"jakapil-cli/cmd/vpc/port"
+	"jakapil-cli/cmd/vpc/publicnet"
 	"jakapil-cli/cmd/vpc/publicsubnet"
 	"jakapil-cli/cmd/vpc/router"
 	"jakapil-cli/cmd/vpc/subnet"
@@ -25,7 +26,7 @@ func NewVpcCommand() *cobra.Command {
 		Long: `Manage Selectel Virtual Private Cloud (VPC) networking.
 
 The following objects are supported: networks, subnets, ports, routers,
-floating IPs and public subnets (Resell v2).`,
+floating IPs, public subnets (Resell v2) and public ports (Public Net).`,
 		Run: func(cmd *cobra.Command, args []string) {
 			_ = cmd.Help()
 		},
@@ -45,6 +46,7 @@ floating IPs and public subnets (Resell v2).`,
 		router.NewRouterCommand(),
 		floatingip.NewFloatingIPCommand(),
 		publicsubnet.NewPublicSubnetCommand(),
+		publicnet.NewPublicNetCommand(),
 	)
 
 	return cmd

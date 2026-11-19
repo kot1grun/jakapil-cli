@@ -48,6 +48,7 @@
   - `selectel/craas-go` — Container Registry as a Service (CRaaS);
   - `selectel/go-selvpcclient/v5` — Cloud Platform Projects (Resell) API;
   - `selectel/globalrouter-go` — Global Router (NaaS);`
+  - `selectel/public-net-api-go` — Public Net (прямые публичные адреса/public ports);`
 - **Вывод**: `rivo/tview` + `gdamore/tcell` (рендер таблиц в терминале),
   `go.yaml.in/yaml/v3`, `mattn/go-runewidth` (ширина CJK-символов).
 - **Прочее**: `schollz/progressbar/v3` (прогресс), `golang.org/x/term` (пароли).
@@ -191,6 +192,14 @@ go test ./...
   `internal/keystone`. Токен требуется account-скоуп
   (`LoadUsableAccountToken`, как у Resell/selproject), а не project-скоуп из
   `LoadUsableStoredToken` (который используют MKS/CRaaS).
+- **Public Net (public ports)**: `vpc public-port` построен на
+  `selectel/public-net-api-go/pkg/v1` и использует клиент не-gophercloud напрямую
+  (собственный `v1.PublicNetAPIClient` с `Config{URL,AuthToken}`). Endpoint
+  региональный и резолвится из Keystone каталога (`service type "public-net-api"`)
+  через `internal/keystone`, как и остальные VPC-объекты, поэтому `--region`
+  обязателен/берётся из `$OS_REGION_NAME`. Токен project-скоуп
+  (`LoadUsableStoredToken`). При `create` project ID берётся из `--project-id`
+  либо выводится из скоупа токена (см. `cmd/vpc/publicnet/client.ResolveProjectID`).
 
 ### Как проверять вручную
 
@@ -206,6 +215,7 @@ make build
 ./bin/jakapil-cli vpc network list   --region ru-6
 ./bin/jakapil-cli selproject list    --region ru-6          # ждёт account-токен
 ./bin/jakapil-cli naas global-router list                 # фикс. endpoint, account-токен
+./bin/jakapil-cli vpc public-port list --region ru-6      # Public Net, project-токен, endpoint из каталога
 # + --debug  для дампа каталога / endpoint (кроме naas — endpoint фиксирован)
 ./bin/jakapil-cli mks cluster list --region ru-6 --debug
 ```

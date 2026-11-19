@@ -40,12 +40,13 @@ IaaS support includes:
 
 - managing the lifecycle of VMs and related entities (images, volumes, flavors, SSH keys)
 - managing the lifecycle of network entities (networks, subnets, ports, routers, "floating" addresses)
+- managing direct public addresses (public ports, the Public Net service)
 
 **Not yet implemented**, but planned in the near future:
 
 - IAM
-- public subnets
-- direct public addresses
+- ~~public subnets~~
+- ~~direct public addresses~~
 - DNS hosting
 - private DNS service
 - load balancers
@@ -66,6 +67,8 @@ Of the main ones, the following libraries are used:
 - go-selvpcclient
 - mks-go
 - craas-go
+- globalrouter-go
+- public-net-api-go
 
 <a id="install"></a>
 

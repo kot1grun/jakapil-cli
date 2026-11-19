@@ -64,6 +64,8 @@ github.com/selectel/go-selvpcclient/v5 v5.0.0 h1:jDlWiP61cFuZVcDslR7S1W/IWZAvEm8
 github.com/selectel/go-selvpcclient/v5 v5.0.0/go.mod h1:ul4sKOkZaO4RXCZVPgIOvNK96kF2bmR4xvr6oewVUec=
 github.com/selectel/mks-go v1.1.0 h1:puJW2uuleAwsVyJaaAeRBwrK8+1cQ8tL7deBjLOyToQ=
 github.com/selectel/mks-go v1.1.0/go.mod h1:VxtV3dzwgOEzZc+9VMQb9DvxfSlej2ZQ8jnT8kqIGgU=
+github.com/selectel/public-net-api-go v1.0.1 h1:oHkh96+osdXNpi/khyEcovBUZr9y8XfretHLs4QpAXI=
+github.com/selectel/public-net-api-go v1.0.1/go.mod h1:ilQXF2PQssdx2P6Nohil6T5olqtRNr2/CyioTC3OhPI=
 github.com/sourcegraph/conc v0.3.1-0.20240121214520-5f936abd7ae8 h1:+jumHNA0Wrelhe64i8F6HNlS8pkoyMv5sreGx2Ry5Rw=
 github.com/sourcegraph/conc v0.3.1-0.20240121214520-5f936abd7ae8/go.mod h1:3n1Cwaq1E1/1lhQhtRK2ts/ZwZEhjcQeJQ1RuC6Q/8U=
 github.com/spf13/afero v1.15.0 h1:b/YBCLWAJdFWJTN9cLhiXXcD7mzKn9Dm86dNnfyQw1I=

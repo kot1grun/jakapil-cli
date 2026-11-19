@@ -14,6 +14,7 @@ require (
 	github.com/selectel/globalrouter-go v1.2.1
 	github.com/selectel/go-selvpcclient/v5 v5.0.0
 	github.com/selectel/mks-go v1.1.0
+	github.com/selectel/public-net-api-go v1.0.1
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	go.yaml.in/yaml/v3 v3.0.4
