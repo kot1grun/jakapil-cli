@@ -193,6 +193,38 @@ func DiscoverRegions(o Options) ([]string, error) {
 	return RegionsFromProvider(provider, o.ServiceType)
 }
 
+// ProjectIDFromProvider returns the ID of the project a token is scoped to, or
+// the empty string when the token carries no project scope. The provider must
+// have been authenticated (Authenticate), otherwise the returned error is
+// wrapped by ErrNoAuthResult.
+func ProjectIDFromProvider(provider *gophercloud.ProviderClient) (string, error) {
+	project, err := extractProject(provider)
+	if err != nil {
+		return "", err
+	}
+	if project == nil {
+		return "", nil
+	}
+	return project.ID, nil
+}
+
+// extractProject returns the project a token is scoped to, or the empty string
+// project (nil) when the token is not project-scoped (for example an
+// account-scoped token, which is scoped to a domain instead).
+func extractProject(provider *gophercloud.ProviderClient) (*tokens3.Project, error) {
+	if provider == nil || provider.GetAuthResult() == nil {
+		return nil, fmt.Errorf("no authentication result available")
+	}
+	switch r := provider.GetAuthResult().(type) {
+	case tokens3.CreateResult:
+		return r.ExtractProject()
+	case tokens3.GetResult:
+		return r.ExtractProject()
+	default:
+		return nil, fmt.Errorf("unexpected auth result type %T", provider.GetAuthResult())
+	}
+}
+
 // printDebug dumps the raw service catalog and the endpoints selected from it
 // to w. It is used only for troubleshooting.
 func printDebug(w io.Writer, provider *gophercloud.ProviderClient, o Options, serviceEndpoint string) {
